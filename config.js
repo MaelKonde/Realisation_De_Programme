@@ -8,18 +8,20 @@
    (mots-clés via key_word.json, nuage, carte par pays, évolution,
    suggestions, stats) est fait ici, côté navigateur, dans app.js.
 
-   NB_ARTICLES_A_CHARGER : nombre d'articles à demander à /articles/<n>.
-   L'API n'a pas de notion de "tous les articles" ni de filtre par mois :
-   on demande donc un grand nombre d'un coup (SQLite plafonne de lui-même
-   si la base en contient moins) et on filtre par mois côté client à
-   partir du champ `date` de chaque article.
+   TAILLE_PAGE_ARTICLES : app.js charge maintenant TOUS les articles de la
+   base automatiquement, mais page par page (via ?offset=...) plutôt qu'en
+   un seul appel géant — sinon ça sature la mémoire/le worker du service et
+   fait échouer le health check Render (vécu : voir la conversation).
+   Cette valeur est juste la taille d'une page ; pas besoin de connaître le
+   total à l'avance (mais /articles/count reste utile pour estimer le temps
+   de chargement).
    ══════════════════════════════════════════════════════════════════════ */
 const APP_CONFIG = {
   BACKEND_API_URL: 'https://veille-scientifique-api.onrender.com',
-  NB_ARTICLES_A_CHARGER: 600000,
+  TAILLE_PAGE_ARTICLES: 2000,
   // Nombre d'articles (les plus cités) pour lesquels on va chercher les
   // auteurs/pays — /auteurs/<id> est un appel par article, donc ce nombre
   // est volontairement limité pour rester praticable dans un navigateur
   // (voir le commentaire détaillé dans app.js, section "CARTE DU MONDE").
-  NB_ARTICLES_POUR_CARTE_PAYS: 500,
+  NB_ARTICLES_POUR_CARTE_PAYS: 300,
 };
