@@ -7,6 +7,7 @@ Description : Télécharge bdd.db depuis la Release GitHub au moment du build
 Usage...... : python download_db.py
 """
 import os
+import sqlite3
 import sys
 import urllib.request
 
@@ -15,6 +16,30 @@ DB_URL = os.environ.get(
     "https://github.com/MaelKonde/RealisationDeProgramme/releases/download/v1-db/bdd.db",
 )
 OUTPUT = "bdd.db"
+
+
+def creer_index():
+    """Crée les index une seule fois, ici au build, plutôt qu'à chaque
+    démarrage de l'app (api_flask.py) — un service gratuit Render se
+    redémarre à chaque réveil après mise en veille (15 min d'inactivité),
+    et reconstruire des index sur ~1,3 Go de données à chaque réveil est
+    inutilement lourd (risque d'OOM sur les 512 Mo de RAM du plan gratuit)."""
+    print("Création des index SQLite...")
+    try:
+        connexion = sqlite3.connect(OUTPUT)
+        curseur = connexion.cursor()
+        curseur.execute("CREATE INDEX IF NOT EXISTS idx_articles_citations ON articles(citations)")
+        curseur.execute("CREATE INDEX IF NOT EXISTS idx_articles_date ON articles(date)")
+        curseur.execute("CREATE INDEX IF NOT EXISTS idx_auteurs_id_article ON auteurs(id_article)")
+        curseur.execute("CREATE INDEX IF NOT EXISTS idx_auteurs_pays ON auteurs(pays)")
+        connexion.commit()
+        connexion.close()
+        print("OK : index créés.")
+    except Exception as exc:
+        # On ne fait pas échouer le build pour autant : les index sont une
+        # optimisation, pas un pré-requis pour que l'API réponde.
+        print(f"AVERTISSEMENT : création des index impossible ({exc}) — "
+              f"vérifie le nom des tables/colonnes si l'erreur persiste.", file=sys.stderr)
 
 
 def main() -> None:
@@ -48,6 +73,8 @@ def main() -> None:
 
     taille_mo = os.path.getsize(OUTPUT) / (1024 * 1024)
     print(f"OK : {OUTPUT} téléchargé ({taille_mo:.1f} Mo).")
+
+    creer_index()
 
 
 if __name__ == "__main__":
