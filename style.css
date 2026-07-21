@@ -164,6 +164,15 @@ header.scrolled {
   animation: pulse-live 3s ease-in-out infinite;
 }
 
+.hpill.live a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.hpill.live a:hover {
+  text-decoration: underline;
+}
+
 @keyframes pulse-live {
 
   0%,
