@@ -16,10 +16,10 @@
    ══════════════════════════════════════════════════════════════════════ */
 const APP_CONFIG = {
   BACKEND_API_URL: 'https://veille-scientifique-api.onrender.com',
-  NB_ARTICLES_A_CHARGER: 8000,
+  NB_ARTICLES_A_CHARGER: 1000000,
   // Nombre d'articles (les plus cités) pour lesquels on va chercher les
   // auteurs/pays — /auteurs/<id> est un appel par article, donc ce nombre
   // est volontairement limité pour rester praticable dans un navigateur
   // (voir le commentaire détaillé dans app.js, section "CARTE DU MONDE").
-  NB_ARTICLES_POUR_CARTE_PAYS: 300,
+  NB_ARTICLES_POUR_CARTE_PAYS: 1000,
 };
