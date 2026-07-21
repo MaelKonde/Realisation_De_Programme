@@ -3,20 +3,25 @@
    ══════════════════════════════════════════════════════════════════════
    👉 C'est le SEUL endroit à modifier si l'URL de l'API change.
 
-   ⚠ api_flask.py est volontairement le fichier minimal (2 routes,
-   /articles/<limite> et /auteurs/<id_article>, sans mots-clés ni
-   pagination). Conséquence assumée : pas de nuage de mots, pas de carte
-   par pays, pas d'évolution temporelle — seule la liste des articles est
-   disponible (voir app.js pour le détail des sections désactivées).
+   Architecture "front-first" : api_flask.py ne renvoie que des données
+   brutes (/articles/<limite>?offset=..., /articles/count,
+   /auteurs/<id_article>, /health). Tout le calcul (mots-clés via
+   key_word.json, nuage, carte par pays, évolution, suggestions, stats)
+   est fait ici, côté navigateur, dans app.js.
 
-   NB_ARTICLES_A_CHARGER : /articles/<limite> n'a pas de notion d'offset,
-   donc "charger tous les articles" = un seul appel avec un grand nombre.
-   Comme cette route ne renvoie plus index_inverse_compte (retiré du
-   SELECT dans le fichier minimal), le payload par article est minuscule
-   (5 champs texte/nombre) : un seul gros appel reste praticable, pas
-   besoin de pagination ici.
+   TAILLE_PAGE_ARTICLES : app.js charge TOUS les articles de la base
+   automatiquement, mais PAGE PAR PAGE (via ?offset=...) plutôt qu'en un
+   seul appel géant — sinon ça sature la mémoire/le worker du service et
+   fait échouer le health check Render. Cette valeur est juste la taille
+   d'une page ; pas besoin de connaître le total à l'avance (mais
+   /articles/count reste utile pour estimer le temps de chargement).
    ══════════════════════════════════════════════════════════════════════ */
 const APP_CONFIG = {
   BACKEND_API_URL: 'https://veille-scientifique-api.onrender.com',
-  NB_ARTICLES_A_CHARGER: 100000,
+  TAILLE_PAGE_ARTICLES: 2000,
+  // Nombre d'articles (les plus cités) pour lesquels on va chercher les
+  // auteurs/pays — /auteurs/<id> est un appel par article, donc ce nombre
+  // est volontairement limité pour rester praticable dans un navigateur
+  // (voir le commentaire détaillé dans app.js, section "CARTE DU MONDE").
+  NB_ARTICLES_POUR_CARTE_PAYS: 300,
 };
