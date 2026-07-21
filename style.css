@@ -170,7 +170,7 @@ header.scrolled {
 }
 
 .hpill.live a:hover {
-  text-decoration: underline;
+  text-decoration: none;
 }
 
 @keyframes pulse-live {
