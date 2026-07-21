@@ -1,0 +1,40 @@
+# Nom........ : render.yaml (Render Blueprint — https://render.com/docs/blueprint-spec)
+# Description : Déploie 2 services :
+#                 - veille-scientifique-api   -> API Flask (lit bdd.db, téléchargé au build)
+#                 - veille-scientifique-front -> site statique (index.html, app.js, ...)
+# Usage...... : Pousse ce dépôt sur GitHub, puis sur Render :
+#                 New > Blueprint > sélectionne ce dépôt > Deploy Blueprint.
+services:
+  # ------------------------------------------------------------------------
+  # 1) API Flask — bdd.db (~1 Go) est téléchargé depuis la Release GitHub
+  #    au moment du build (creer_bdd.py / alimenter_bdd.py ne tournent pas ici).
+  # ------------------------------------------------------------------------
+  - type: web
+    name: veille-scientifique-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: "pip install -r requirements.txt && python download_db.py"
+    startCommand: "gunicorn api_flask:application --timeout 120"
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DB_DOWNLOAD_URL
+        value: https://github.com/MaelKonde/RealisationDeProgramme/releases/download/v1-db/bdd.db
+
+  # ------------------------------------------------------------------------
+  # 2) Front-end statique (index.html + style.css + app.js + config.js +
+  #    data.js + favicon.svg), tous à la racine du dépôt.
+  # ------------------------------------------------------------------------
+  - type: web
+    name: veille-scientifique-front
+    runtime: static
+    buildCommand: "echo 'Site statique - aucun build necessaire'"
+    staticPublishPath: ./
+    autoDeployTrigger: commit
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
