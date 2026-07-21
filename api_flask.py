@@ -75,24 +75,11 @@ def connecter_bdd():
 
 
 def initialiser_index():
-    """Index utiles pour rester rapide sur une base de ~1 Go. Ne fait jamais
-    planter le démarrage : si bdd.db n'est pas encore téléchargé (ex. build
-    en cours), on logue simplement un avertissement."""
-    try:
-        connexion = connecter_bdd()
-        curseur = connexion.cursor()
-        curseur.execute("CREATE INDEX IF NOT EXISTS idx_articles_citations ON articles(citations)")
-        curseur.execute("CREATE INDEX IF NOT EXISTS idx_articles_date ON articles(date)")
-        curseur.execute("CREATE INDEX IF NOT EXISTS idx_auteurs_id_article ON auteurs(id_article)")
-        curseur.execute("CREATE INDEX IF NOT EXISTS idx_auteurs_pays ON auteurs(pays)")
-        connexion.commit()
-        connexion.close()
-        application.logger.info("Index SQLite vérifiés/créés avec succès.")
-    except Exception:
-        application.logger.exception(
-            "Impossible de créer les index (bdd.db absent ou schéma inattendu ?) — "
-            "vérifie que download_db.py a bien téléchargé bdd.db avant le démarrage."
-        )
+    """⚠ Ne fait plus rien ici : la création des index se fait maintenant
+    une seule fois au build, dans download_db.py, juste après le
+    téléchargement de bdd.db — pas à chaque démarrage/réveil du service
+    (voir le commentaire dans download_db.py pour le pourquoi)."""
+    pass
 
 
 # ─────────────────────────────────────────────────────────────────────────
