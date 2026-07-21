@@ -3,25 +3,12 @@
    ══════════════════════════════════════════════════════════════════════
    👉 C'est le SEUL endroit à modifier si l'URL de l'API change.
 
-   Architecture "front-first" : api_flask.py ne renvoie que des données
-   brutes (/articles/<limite>?offset=..., /articles/count,
-   /auteurs/<id_article>, /health). Tout le calcul (mots-clés via
-   key_word.json, nuage, carte par pays, évolution, suggestions, stats)
-   est fait ici, côté navigateur, dans app.js.
-
-   TAILLE_PAGE_ARTICLES : app.js charge TOUS les articles de la base
-   automatiquement, mais PAGE PAR PAGE (via ?offset=...) plutôt qu'en un
-   seul appel géant — sinon ça sature la mémoire/le worker du service et
-   fait échouer le health check Render. Cette valeur est juste la taille
-   d'une page ; pas besoin de connaître le total à l'avance (mais
-   /articles/count reste utile pour estimer le temps de chargement).
+   ⚠ api_flask.py calcule tout côté serveur (nuage, carte, évolution,
+   suggestions, stats, top articles) via SQL + key_word.json. Le
+   navigateur ne télécharge jamais les articles bruts en masse — chaque
+   vue appelle un endpoint qui renvoie un résultat déjà agrégé. Voir le
+   commentaire en tête de app.js et de api_flask.py.
    ══════════════════════════════════════════════════════════════════════ */
 const APP_CONFIG = {
   BACKEND_API_URL: 'https://veille-scientifique-api.onrender.com',
-  TAILLE_PAGE_ARTICLES: 2000,
-  // Nombre d'articles (les plus cités) pour lesquels on va chercher les
-  // auteurs/pays — /auteurs/<id> est un appel par article, donc ce nombre
-  // est volontairement limité pour rester praticable dans un navigateur
-  // (voir le commentaire détaillé dans app.js, section "CARTE DU MONDE").
-  NB_ARTICLES_POUR_CARTE_PAYS: 300,
 };
