@@ -16,7 +16,7 @@
    ══════════════════════════════════════════════════════════════════════ */
 const APP_CONFIG = {
   BACKEND_API_URL: 'https://veille-scientifique-api.onrender.com',
-  NB_ARTICLES_A_CHARGER: 1000000,
+  NB_ARTICLES_A_CHARGER: 600000,
   // Nombre d'articles (les plus cités) pour lesquels on va chercher les
   // auteurs/pays — /auteurs/<id> est un appel par article, donc ce nombre
   // est volontairement limité pour rester praticable dans un navigateur
