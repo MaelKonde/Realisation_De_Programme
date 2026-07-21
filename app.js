@@ -1,155 +1,43 @@
 /* ══════════════════════════════════════════════════════════════════════
-   LOGIQUE APPLICATIVE — Tendances Scientifiques (architecture "front-first")
+   LOGIQUE APPLICATIVE — Tendances Scientifiques (agrégation SERVEUR)
    ══════════════════════════════════════════════════════════════════════
-   Dépend de : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO),
-   et key_word.json (référentiel de mots-clés, servi statiquement à côté
-   de index.html — même dépôt que le front).
+   Dépend de : config.js (APP_CONFIG.BACKEND_API_URL) et data.js
+   (CENTROIDS, PAYS_INFO). Ces deux fichiers doivent être chargés AVANT
+   celui-ci dans index.html.
 
-   ⚠ CHOIX D'ARCHITECTURE : api_flask.py ne fait ICI aucun calcul — il
-   renvoie des données brutes (/articles/<limite>?offset=...,
-   /articles/count, /auteurs/<id_article>). Tout (nuage de mots, carte
-   par pays, évolution, suggestions, stats) est calculé ici, dans le
-   navigateur. Deux conséquences importantes :
-
-   1. TOUS les articles sont chargés automatiquement, mais PAGE PAR PAGE
-      (via /articles/<n>?offset=...) plutôt qu'en un seul appel géant, pour
-      ne pas saturer la mémoire/le worker du service (vécu : ça faisait
-      échouer le health check Render). Voir fetchTousLesArticles().
-
-   2. /auteurs/<id_article> est un appel PAR ARTICLE. Appeler ça pour des
-      milliers d'articles ferait des milliers de requêtes HTTP — donc :
-        - le nuage de mots / l'évolution / les suggestions n'ont PAS besoin
-          des auteurs (uniquement de index_inverse_compte) → aucun appel
-          /auteurs nécessaire pour ces vues.
-        - la liste "articles les plus cités" ne va chercher les auteurs
-          QUE pour les ~20 articles réellement affichés.
-        - la carte par pays est calculée sur un ÉCHANTILLON (les
-          APP_CONFIG.NB_ARTICLES_POUR_CARTE_PAYS articles les plus cités,
-          toutes dates confondues) plutôt que sur l'intégralité de la
-          base : c'est une approximation assumée, pas un calcul exhaustif.
+   ⚠ Toute la logique de calcul (nuage de mots via key_word.json, carte
+   par pays, évolution, suggestions, stats) est faite CÔTÉ SERVEUR
+   (api_flask.py), pas ici. Le navigateur ne télécharge jamais les
+   articles bruts en masse — chaque vue appelle un endpoint qui renvoie
+   directement un petit résultat déjà agrégé. C'est indispensable pour
+   rester réactif avec ~500 000 articles en base (voir la conversation :
+   l'ancienne architecture "tout calculer dans le navigateur" prenait
+   plusieurs minutes à charger).
    ══════════════════════════════════════════════════════════════════════ */
 
 const API = APP_CONFIG.BACKEND_API_URL;
 
-/* ══ Référentiel de mots-clés (key_word.json), chargé une fois ══════════ */
-let MOTS_CLES_SIMPLES = new Set();
-let PHRASES_CLES = [];
-
-async function chargerReferentiel() {
-  try {
-    const categories = await fetch('key_word.json').then(r => r.json());
-    Object.values(categories).forEach(termes => {
-      termes.forEach(terme => {
-        const t = terme.toLowerCase().trim();
-        if (!t) return;
-        const mots = t.split(' ');
-        if (mots.length === 1) MOTS_CLES_SIMPLES.add(mots[0]);
-        else PHRASES_CLES.push({ mots, phrase: t });
-      });
-    });
-  } catch (err) {
-    console.error('key_word.json introuvable/invalide — aucun mot-clé ne sera détecté.', err);
-  }
+async function requeteApi(chemin, params) {
+  const qs = params ? `?${new URLSearchParams(params).toString()}` : '';
+  const r = await fetch(`${API}${chemin}${qs}`);
+  if (!r.ok) throw new Error(`API ${r.status} sur ${chemin}`);
+  return r.json();
 }
+const fetchMois          = ()              => requeteApi('/api/mois');
+const fetchMotsCles      = (mois = '')     => requeteApi('/api/mots-cles', mois ? { mois } : {});
+const fetchPays          = ()              => requeteApi('/api/pays');
+const fetchEvolution     = (mot)           => requeteApi('/api/evolution', { mot });
+const fetchArticlesTop   = (mot, limit=20) => requeteApi('/api/articles-top', mot ? { mot, limit } : { limit });
+const fetchSuggestions   = ()              => requeteApi('/api/suggestions');
+const fetchStatsGlobales = ()              => requeteApi('/api/stats-globales');
 
-/** Reproduit côté client la logique de l'API précédente : ne garde que les
- *  mots/expressions du référentiel. Pour une expression composée, le
- *  format de index_inverse_compte est un simple compteur (pas des
- *  positions), donc pas de vérification de contiguïté possible : on
- *  vérifie juste que tous les mots de l'expression sont présents, avec un
- *  poids = le minimum de leurs comptes. */
-function extraireMotsArticle(indexJsonStr) {
-  const resultat = {};
-  if (!indexJsonStr) return resultat;
-  let compte;
-  try { compte = JSON.parse(indexJsonStr); } catch { return resultat; }
-  if (!compte || typeof compte !== 'object') return resultat;
-
-  const normalise = {};
-  Object.entries(compte).forEach(([mot, val]) => {
-    const m = mot.toLowerCase().trim();
-    const n = Number(val);
-    if (!Number.isFinite(n)) return;
-    normalise[m] = (normalise[m] || 0) + n;
-  });
-
-  Object.entries(normalise).forEach(([mot, n]) => {
-    if (MOTS_CLES_SIMPLES.has(mot)) resultat[mot] = (resultat[mot] || 0) + n;
-  });
-
-  PHRASES_CLES.forEach(({ mots, phrase }) => {
-    if (mots.every(m => m in normalise)) {
-      const poids = Math.min(...mots.map(m => normalise[m]));
-      resultat[phrase] = (resultat[phrase] || 0) + poids;
-    }
-  });
-
-  return resultat;
-}
-
-/* ══ Accès API bruts ═══════════════════════════════════════════════════ */
-
-/** Charge TOUS les articles, page par page (via ?offset=...), plutôt qu'en
- *  un seul appel. Deux raisons :
- *  1. Un seul appel /articles/<très grand nombre> peut saturer la mémoire
- *     et le worker du service gratuit/petit sur Render (voir la
- *     conversation : ça faisait planter le health check).
- *  2. Ça permet d'afficher une progression et de ne pas geler l'onglet le
- *     temps de tout récupérer d'un coup. */
-async function fetchTousLesArticles(onProgress) {
-  const TAILLE_PAGE = APP_CONFIG.TAILLE_PAGE_ARTICLES || 2000;
-  const tout = [];
-  let offset = 0;
-  while (true) {
-    const r = await fetch(`${API}/articles/${TAILLE_PAGE}?offset=${offset}`);
-    if (!r.ok) throw new Error(`API ${r.status} sur /articles/${TAILLE_PAGE}?offset=${offset}`);
-    const page = await r.json();
-    tout.push(...page);
-    if (onProgress) onProgress(tout.length);
-    if (page.length < TAILLE_PAGE) break; // dernière page atteinte
-    offset += TAILLE_PAGE;
-  }
-  return tout;
-}
-
-const _authCache = {};
-function fetchAuteurs(idArticle) {
-  if (_authCache[idArticle]) return _authCache[idArticle];
-  const p = fetch(`${API}/auteurs/${encodeURIComponent(idArticle)}`)
-    .then(r => { if (!r.ok) throw new Error(`API ${r.status} sur /auteurs`); return r.json(); })
-    .catch(err => { console.error(err); return []; });
-  _authCache[idArticle] = p;
-  return p;
-}
-
-/** Lance `worker(item)` sur chaque élément de `items`, au plus `concurrency`
- *  requêtes en parallèle — nécessaire car /auteurs/<id> est un appel par
- *  article : sans limite de concurrence, des centaines de requêtes
- *  simultanées saturent le navigateur (et l'API gratuite Render). */
-async function avecConcurrenceLimitee(items, worker, concurrency = 6) {
-  const resultats = new Array(items.length);
-  let curseur = 0;
-  async function travailleur() {
-    while (curseur < items.length) {
-      const i = curseur++;
-      resultats[i] = await worker(items[i], i);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, travailleur));
-  return resultats;
-}
-
-/* ══ État applicatif ═══════════════════════════════════════════════════ */
-let ARTICLES        = [];  // tous les articles chargés, normalisés + _kw calculé
-let MONTHLY_KW       = {}; // { "2025-03": {mot:poids}, ... }
-let GLOBAL_KW        = {}; // agrégat tous mois confondus
+/* État applicatif */
 let MONTH_ORDER      = [];
-let countryMap       = {}; // { code: {total, mots:[{mot,poids}]} } — échantillon
-let DERIVED_STATS    = { total_articles: 0, total_citations: 0, total_mois: 0, total_pays: null };
-
+let STATS_GLOBALES   = { total_articles: 0, total_citations: 0, total_pays: 0, total_mois: 0 };
 let ACTIVE_MONTH     = '';
 let ACTIVE_COUNTRY   = null;
 let EVO_WORD         = null;
+let currentCloudMots = [];
 let CURRENT_ARTICLES = [];
 
 const MOIS_FR = ['Janv', 'Fév', 'Mars', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sept', 'Oct', 'Nov', 'Déc'];
@@ -159,37 +47,6 @@ function formatMonthLabel(moisIso) {
   const idx = parseInt(m, 10) - 1;
   if (!annee || Number.isNaN(idx) || idx < 0 || idx > 11) return moisIso;
   return `${MOIS_FR[idx]} ${annee}`;
-}
-
-function normaliserArticle(raw) {
-  return {
-    id: raw.id,
-    titre: raw.titre || 'Sans titre',
-    date: raw.date || '',
-    mois: (raw.date || '').slice(0, 7),
-    langue: raw.langue || 'en',
-    citations: raw.citations || 0,
-    _kw: extraireMotsArticle(raw.index_inverse_compte),
-    auteurs: null,   // rempli à la demande via fetchAuteurs()
-    pays: [],
-  };
-}
-
-function construireAgregats() {
-  MONTHLY_KW = {};
-  ARTICLES.forEach(a => {
-    if (!a.mois) return;
-    MONTHLY_KW[a.mois] = MONTHLY_KW[a.mois] || {};
-    Object.entries(a._kw).forEach(([w, c]) => {
-      MONTHLY_KW[a.mois][w] = (MONTHLY_KW[a.mois][w] || 0) + c;
-    });
-  });
-  MONTH_ORDER = Object.keys(MONTHLY_KW).sort();
-
-  GLOBAL_KW = {};
-  Object.values(MONTHLY_KW).forEach(kw => {
-    Object.entries(kw).forEach(([w, c]) => { GLOBAL_KW[w] = (GLOBAL_KW[w] || 0) + c; });
-  });
 }
 
 /* ══ Particules (fond du hero) ═════════════════════════════════════════ */
@@ -236,40 +93,44 @@ function showTab(name,btn){ /* single page — no-op */ }
 
 /* ══ Stat strip ════════════════════════════════════════════════════════ */
 function renderStatStrip(){
-  const topKW = Object.entries((ACTIVE_MONTH ? MONTHLY_KW[ACTIVE_MONTH] : GLOBAL_KW) || {})
-    .sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
-  const totalPaysAffiche = DERIVED_STATS.total_pays===null ? '…' : DERIVED_STATS.total_pays;
+  const topKW = currentCloudMots[0]?.mot || '—';
   document.getElementById('statStrip').innerHTML=`
-    <div class="stat-card"><div class="stat-label">Articles chargés</div>
+    <div class="stat-card"><div class="stat-label">Articles collectés</div>
       <div class="stat-val g" id="sc-tot">0</div><div class="stat-note">arXiv via OpenAlex</div></div>
     <div class="stat-card"><div class="stat-label">Mois couverts</div>
-      <div class="stat-val">${DERIVED_STATS.total_mois}</div></div>
-    <div class="stat-card"><div class="stat-label">Pays (échantillon)</div>
-      <div class="stat-val">${totalPaysAffiche}</div></div>
-    <div class="stat-card"><div class="stat-label">Mot top (${ACTIVE_MONTH?formatMonthLabel(ACTIVE_MONTH):'tous les mois'})</div>
+      <div class="stat-val">${STATS_GLOBALES.total_mois}</div></div>
+    <div class="stat-card"><div class="stat-label">Pays avec données</div>
+      <div class="stat-val">${STATS_GLOBALES.total_pays}</div></div>
+    <div class="stat-card"><div class="stat-label">Mot top (${ACTIVE_MONTH ? formatMonthLabel(ACTIVE_MONTH) : 'tous les mois'})</div>
       <div class="stat-val" style="font-size:1rem;padding-top:3px;font-style:italic;">${topKW}</div></div>
   `;
-  setTimeout(()=>animCount(document.getElementById('sc-tot'),DERIVED_STATS.total_articles),80);
+  setTimeout(()=>animCount(document.getElementById('sc-tot'),STATS_GLOBALES.total_articles),80);
 }
 
 /* ══ Cloud ═════════════════════════════════════════════════════════════ */
-function renderCloud(mois){
+async function renderCloud(mois){
   const wrap=document.getElementById('cloudMain');
   wrap.classList.add('fading');
-  setTimeout(()=>{
-    const data = mois ? (MONTHLY_KW[mois]||{}) : GLOBAL_KW;
-    const sorted=Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,55);
-    if(!sorted.length){wrap.innerHTML='<p style="color:var(--text-3);font-size:13px;">Aucune donnée.</p>';wrap.classList.remove('fading');return;}
-    const maxF=sorted[0][1];
-    wrap.innerHTML=sorted.map(([w,f])=>{
-      const size=11+Math.round((f/maxF)*20);
-      const op=(.38+(f/maxF)*.62).toFixed(2);
-      const isEvo=w===EVO_WORD;
-      return `<span class="cloud-word${isEvo?' selected':''}" style="font-size:${size}px;opacity:${op}"
-        onclick="onCloudClick('${w.replace(/'/g,"\\'")}')" title="${w}: score ${Math.round(f)}">${w}</span>`;
-    }).join('');
+  try {
+    const data = await fetchMotsCles(mois);
+    currentCloudMots = data.mots || [];
+    setTimeout(()=>{
+      if(!currentCloudMots.length){wrap.innerHTML='<p style="color:var(--text-3);font-size:13px;">Aucune donnée.</p>';wrap.classList.remove('fading');return;}
+      const maxF=currentCloudMots[0].poids;
+      wrap.innerHTML=currentCloudMots.map(({mot:w,poids:f})=>{
+        const size=11+Math.round((f/maxF)*20);
+        const op=(.38+(f/maxF)*.62).toFixed(2);
+        const isEvo=w===EVO_WORD;
+        return `<span class="cloud-word${isEvo?' selected':''}" style="font-size:${size}px;opacity:${op}"
+          onclick="onCloudClick('${w.replace(/'/g,"\\'")}')" title="${w}: score ${Math.round(f)}">${w}</span>`;
+      }).join('');
+      wrap.classList.remove('fading');
+    },180);
+  } catch(err) {
+    console.error(err);
+    wrap.innerHTML='<p style="color:var(--rust);font-size:13px;">Erreur de chargement du nuage (API indisponible).</p>';
     wrap.classList.remove('fading');
-  },180);
+  }
 }
 
 function onCloudClick(word){
@@ -309,8 +170,7 @@ function initMonthPills(){
 function setMonth(m,i){
   ACTIVE_MONTH=m;
   document.querySelectorAll('.m-pill').forEach((b,j)=>b.classList.toggle('active',j===i+1));
-  renderCloud(m);
-  renderStatStrip();
+  renderCloud(m).then(renderStatStrip);
   if(EVO_WORD) renderEvoChart();
 }
 
@@ -319,6 +179,7 @@ function renderCompare(){ /* single page — removed */ }
 /* ══ CARTE DU MONDE D3 ══════════════════════════════════════════════════ */
 let mapInitialized = false;
 let mapProjection, mapPath, mapSvg, mapG, mapZoom;
+let countryMap = {}; // { code: { total, mots:[{mot,poids}] } } — depuis /api/pays
 
 const ISO_A2_MAP = {
   'AD':'020', 'AE':'784', 'AF':'004', 'AG':'028', 'AI':'660', 'AL':'008',
@@ -366,44 +227,18 @@ const ISO_A2_MAP = {
 };
 const NUM_TO_A2 = Object.fromEntries(Object.entries(ISO_A2_MAP).map(([a2,num])=>[num,a2]));
 
-/** Construit countryMap à partir d'un ÉCHANTILLON (les articles les plus
- *  cités, toutes dates confondues) — voir le commentaire en tête de
- *  fichier pour pourquoi on ne peut pas le faire sur tous les articles. */
 async function loadPaysEtCarte(){
-  const echantillon = [...ARTICLES].sort((a,b)=>b.citations-a.citations)
-    .slice(0, APP_CONFIG.NB_ARTICLES_POUR_CARTE_PAYS);
-
   try {
-    await avecConcurrenceLimitee(echantillon, async (a) => {
-      a.auteurs = await fetchAuteurs(a.id);
-      a.pays = [...new Set(a.auteurs.map(au=>au.pays).filter(Boolean))];
-    }, 6);
+    const data = await fetchPays();
+    countryMap = {};
+    (data.pays || []).forEach(p => { countryMap[p.code] = { total: p.total, mots: p.mots || [] }; });
+    if(!ACTIVE_COUNTRY){
+      const premier = (data.pays||[])[0];
+      if(premier) ACTIVE_COUNTRY = premier.code;
+    }
   } catch(err) {
     console.error(err);
-    toast('Erreur pendant le chargement des pays (auteurs)');
-  }
-
-  countryMap = {};
-  echantillon.forEach(a => {
-    a.pays.forEach(code => {
-      countryMap[code] = countryMap[code] || { total: 0, _kw: {} };
-      countryMap[code].total += 1;
-      Object.entries(a._kw).forEach(([w,c])=>{
-        countryMap[code]._kw[w] = (countryMap[code]._kw[w]||0)+c;
-      });
-    });
-  });
-  Object.values(countryMap).forEach(c=>{
-    c.mots = Object.entries(c._kw).sort((a,b)=>b[1]-a[1]).slice(0,14).map(([mot,poids])=>({mot,poids}));
-    delete c._kw;
-  });
-
-  DERIVED_STATS.total_pays = Object.keys(countryMap).length;
-  renderStatStrip();
-
-  if(!ACTIVE_COUNTRY){
-    const premier = Object.entries(countryMap).sort((a,b)=>b[1].total-a[1].total)[0];
-    if(premier) ACTIVE_COUNTRY = premier[0];
+    toast('Impossible de charger la carte des pays (API indisponible)');
   }
 }
 
@@ -520,8 +355,9 @@ function updateMapBubbles(){
 
 function showMapTooltip(event, code){
   const info = PAYS_INFO[code]||{label:code,flag:'🌐'};
-  const top3 = (countryMap[code]?.mots||[]).slice(0,4).map(m=>m.mot);
-  const tt = document.getElementById('mapTooltip');
+  const kws  = (countryMap[code]?.mots)||[];
+  const top3 = kws.slice(0,4).map(m=>m.mot);
+  const tt   = document.getElementById('mapTooltip');
   tt.innerHTML = `<div class="tt-country">${info.flag} ${info.label}</div>
     <div class="tt-kw">🔑 ${top3.join(' &nbsp;·&nbsp; ')}</div>`;
   moveMapTooltip(event);
@@ -529,21 +365,24 @@ function showMapTooltip(event, code){
 }
 function moveMapTooltip(event){
   const rect = document.getElementById('mapContainer').getBoundingClientRect();
-  const tt = document.getElementById('mapTooltip');
+  const tt   = document.getElementById('mapTooltip');
   let x = event.clientX - rect.left + 14;
-  let y = event.clientY - rect.top - 10;
-  if(x + 220 > rect.width) x -= 240;
-  if(y + 80 > rect.height) y -= 90;
-  tt.style.left = x + 'px'; tt.style.top = y + 'px';
+  let y = event.clientY - rect.top  - 10;
+  if(x + 220 > rect.width)  x -= 240;
+  if(y + 80  > rect.height) y -= 90;
+  tt.style.left = x + 'px';
+  tt.style.top  = y + 'px';
 }
-function hideMapTooltip(){ document.getElementById('mapTooltip').classList.remove('show'); }
+function hideMapTooltip(){
+  document.getElementById('mapTooltip').classList.remove('show');
+}
 
 function selectCountry(code, event){
   if(event) event.stopPropagation();
   ACTIVE_COUNTRY = code;
   const info = PAYS_INFO[code]||{label:code,flag:'🌐'};
-  const sorted = countryMap[code]?.mots||[];
-  const maxV = sorted[0]?.poids||1;
+  const sorted = (countryMap[code]?.mots)||[];
+  const maxV   = sorted[0]?.poids||1;
 
   document.getElementById('sidebarTitle').textContent = `${info.flag} ${info.label}`;
   document.getElementById('sidebarBars').innerHTML = sorted.map(({mot:w,poids:v})=>`
@@ -555,7 +394,8 @@ function selectCountry(code, event){
   animBars();
 
   if(mapG){
-    mapG.selectAll('.bubble').attr('fill', d => d.code===code ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)');
+    mapG.selectAll('.bubble').attr('fill', d =>
+      d.code===code ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)');
     mapG.selectAll('.country').classed('active', d => NUM_TO_A2[String(d.id)]===code);
   }
   toast(`${info.flag} ${info.label} — ${sorted.length} mots-clés`);
@@ -563,48 +403,67 @@ function selectCountry(code, event){
 
 function resetMapZoom(){
   if(mapZoom){
-    d3.select('#worldMapSvg').transition().duration(600).call(mapZoom.transform, d3.zoomIdentity);
+    d3.select('#worldMapSvg')
+      .transition().duration(600)
+      .call(mapZoom.transform, d3.zoomIdentity);
   }
 }
 
 /* ══ ÉVOLUTION ══════════════════════════════════════════════════════════ */
-function traceEvolution(word){
+async function traceEvolution(word){
   if(!word) return;
   EVO_WORD=word.toLowerCase().trim();
   document.getElementById('evoInput').value=EVO_WORD;
-  renderEvoChart();
-  renderTopArticles(EVO_WORD);
+
+  const chart=document.getElementById('evoChart');
+  chart.innerHTML='<p style="opacity:.6;font-size:13px;">Chargement…</p>';
+
+  try {
+    const data = await fetchEvolution(EVO_WORD);
+    currentEvoSerie = data.serie || [];
+    renderEvoChart();
+    await renderTopArticles(EVO_WORD);
+  } catch(err) {
+    console.error(err);
+    toast("Erreur lors du calcul de l'évolution (API indisponible)");
+  }
 }
+let currentEvoSerie = [];
 
 function renderEvoChart(){
-  const vals = MONTH_ORDER.map(m => (MONTHLY_KW[m]||{})[EVO_WORD] || 0);
+  const vals = currentEvoSerie.map(s=>s.poids);
   const maxV = Math.max(...vals, 1);
   const hasData = vals.some(v=>v>0);
 
   document.getElementById('evoLabel').innerHTML=hasData
-    ?`Évolution de <strong style="color:var(--gold)">"${EVO_WORD}"</strong> sur ${MONTH_ORDER.length} mois`
+    ?`Évolution de <strong style="color:var(--gold)">"${EVO_WORD}"</strong> sur ${currentEvoSerie.length} mois`
     :`<span style="color:var(--rust)">Mot "<strong>${EVO_WORD}</strong>" non trouvé dans les données.</span>`;
 
-  document.getElementById('evoChart').innerHTML=MONTH_ORDER.map((m,i)=>{
-    const h=Math.max(4,Math.round((vals[i]/maxV)*100));
-    const isActive=m===ACTIVE_MONTH;
-    return `<div class="tl-col${isActive?' hi':''}" onclick="setMonth('${m}',${i})">
-      <div class="tl-val" style="font-size:9px;color:var(--text-3);">${vals[i]>0?Math.round(vals[i]):'—'}</div>
-      <div class="tl-bar" style="height:${h}px;${vals[i]>0?'background:var(--gold)':''}"></div>
-      <div class="tl-lbl">${formatMonthLabel(m).slice(0,7)}</div>
+  document.getElementById('evoChart').innerHTML=currentEvoSerie.map((s,i)=>{
+    const h=Math.max(4,Math.round((s.poids/maxV)*100));
+    const isActive=s.mois===ACTIVE_MONTH;
+    return `<div class="tl-col${isActive?' hi':''}" onclick="setMonth('${s.mois}',${i})">
+      <div class="tl-val" style="font-size:9px;color:var(--text-3);">${s.poids>0?Math.round(s.poids):'—'}</div>
+      <div class="tl-bar" style="height:${h}px;${s.poids>0?'background:var(--gold)':''}"></div>
+      <div class="tl-lbl">${formatMonthLabel(s.mois).slice(0,7)}</div>
     </div>`;
   }).join('');
 
   document.getElementById('evoNote').textContent=hasData
-    ?`Score = fréquence cumulée du mot dans les articles chargés du mois`
-    :"Ce mot n'apparaît pas dans les données chargées. Essayez un synonyme.";
+    ?`Score = fréquence cumulée du mot dans les articles les plus cités du mois (échantillon)`
+    :"Ce mot n'apparaît pas dans les mois disponibles. Essayez un synonyme.";
 }
 
-function renderEvoSuggestions(){
-  const top=Object.entries(GLOBAL_KW).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([w])=>w);
-  document.getElementById('evoSuggestions').innerHTML=
-    `<span style="font-size:12px;color:var(--text-3);margin-right:4px;">Suggestions :</span>`+
-    top.map(w=>`<span class="kw-tag" onclick="traceEvolution('${w.replace(/'/g,"\\'")}')">${w}</span>`).join('');
+async function renderEvoSuggestions(){
+  try {
+    const data = await fetchSuggestions();
+    const top = data.suggestions || [];
+    document.getElementById('evoSuggestions').innerHTML=
+      `<span style="font-size:12px;color:var(--text-3);margin-right:4px;">Suggestions :</span>`+
+      top.map(w=>`<span class="kw-tag" onclick="traceEvolution('${w.replace(/'/g,"\\'")}')">${w}</span>`).join('');
+  } catch(err) {
+    console.error(err);
+  }
 }
 
 function renderMultiEvo(){ /* single page — removed */ }
@@ -612,25 +471,17 @@ function renderMultiEvo(){ /* single page — removed */ }
 /* ══ ARTICLES ═══════════════════════════════════════════════════════════ */
 async function renderTopArticles(keyword){
   const sub = document.getElementById('articlesSub');
-  if(sub) sub.textContent = 'Recherche des articles…';
-
-  let arts = ARTICLES;
-  if(keyword){
-    const kw = keyword.toLowerCase();
-    arts = arts.filter(a => (kw in a._kw) || (a.titre||'').toLowerCase().includes(kw));
-  }
-  arts = [...arts].sort((a,b)=>b.citations-a.citations).slice(0,20);
-
+  if(sub) sub.textContent = 'Chargement depuis la base de données…';
   try {
-    await avecConcurrenceLimitee(arts.filter(a=>a.auteurs===null), async (a) => {
-      a.auteurs = await fetchAuteurs(a.id);
-      a.pays = [...new Set(a.auteurs.map(au=>au.pays).filter(Boolean))];
-    }, 6);
-  } catch(err) { console.error(err); }
-
-  CURRENT_ARTICLES = arts;
-  updateArticlesHeader(keyword, arts.length);
-  displayArticles(arts, keyword);
+    const data = await fetchArticlesTop(keyword, 20);
+    CURRENT_ARTICLES = data.articles || [];
+    updateArticlesHeader(keyword, CURRENT_ARTICLES.length);
+    displayArticles(CURRENT_ARTICLES, keyword);
+  } catch(err) {
+    console.error(err);
+    if(sub) sub.innerHTML = `<span style="color:var(--rust);">Erreur API : ${err.message}</span>`;
+    displayArticles([], keyword);
+  }
 }
 
 function updateArticlesHeader(keyword, count){
@@ -645,6 +496,16 @@ function updateArticlesHeader(keyword, count){
   }
 }
 
+function urlArticle(id){
+  if(!id) return null;
+  const valeur = String(id).trim();
+  if(/^https?:\/\//i.test(valeur)) return valeur;
+  if(/^\d{4}\.\d{4,5}(v\d+)?$/.test(valeur)) return `https://arxiv.org/abs/${valeur}`;
+  if(/^[a-z-]+\/\d{7}$/i.test(valeur)) return `https://arxiv.org/abs/${valeur}`;
+  if(/^W\d+$/i.test(valeur)) return `https://openalex.org/${valeur}`;
+  return null;
+}
+
 function displayArticles(arts, keyword){
   if(!arts.length){
     document.getElementById('topArticlesList').innerHTML=
@@ -656,16 +517,16 @@ function displayArticles(arts, keyword){
     return;
   }
   document.getElementById('topArticlesList').innerHTML = arts.map((a) => {
-    const oa = a.id && a.id.startsWith('https://openalex.org/') ? a.id : null;
-    const ax = `https://arxiv.org/search/?searchtype=all&query=${encodeURIComponent(a.titre)}`;
+    const oa = urlArticle(a.id);
+    const ax = `https://arxiv.org/search/?searchtype=all&query=${encodeURIComponent(a.titre||'')}`;
     const auths = (a.auteurs||[]).slice(0,3).map(au=>`<strong>${au.nom||'?'}</strong>`).join(', ');
-    const pays  = (a.pays||[]).slice(0,3).map(p=>`<span class="meta-pill">${PAYS_INFO[p]?PAYS_INFO[p].flag+' '+p:p}</span>`).join('');
-    const motsCles = Object.entries(a._kw).sort((x,y)=>y[1]-x[1]).slice(0,10).map(([w])=>w);
+    const paysListe = a.pays && a.pays.length ? a.pays : [...new Set((a.auteurs||[]).map(au=>au.pays).filter(Boolean))];
+    const pays  = paysListe.slice(0,3).map(p=>`<span class="meta-pill">${PAYS_INFO[p]?PAYS_INFO[p].flag+' '+p:p}</span>`).join('');
     return `<div class="article-card">
-      <div class="article-title"><a href="${oa||ax}" target="_blank" rel="noopener">${a.titre}</a></div>
+      <div class="article-title"><a href="${oa||ax}" target="_blank" rel="noopener">${a.titre||'Sans titre'}</a></div>
       <div class="article-authors">${auths}</div>
       <div class="meta-row">
-        <span class="meta-pill date">📅 ${(a.date||'').slice(0,7)}</span>
+        <span class="meta-pill date">📅 ${(a.date||'').slice(0,7)||'date inconnue'}</span>
         ${a.citations>0?`<span class="meta-pill cit">⭐ ${a.citations} citations</span>`:''}
         ${pays}
       </div>
@@ -673,7 +534,7 @@ function displayArticles(arts, keyword){
         ${oa?`<a class="link-btn oa" href="${oa}" target="_blank" rel="noopener">🔗 OpenAlex</a>`:''}
         <a class="link-btn ax" href="${ax}" target="_blank" rel="noopener">📄 arXiv</a>
       </div>
-      ${motsCles.length?`<div class="kw-row">${motsCles.map(kw=>{
+      ${(a.mots_cles||[]).length?`<div class="kw-row">${a.mots_cles.map(kw=>{
         const isMatch = keyword && kw.toLowerCase().includes(keyword.toLowerCase());
         return `<span class="kw-tag" style="${isMatch?'background:var(--gold);color:#fff;border-color:var(--gold);':''}" onclick="onCloudClick('${kw.replace(/'/g,"\\'")}')">${kw}</span>`;
       }).join('')}</div>`:''}
@@ -689,6 +550,7 @@ function resetArticles(){
   document.getElementById('evoLabel').textContent='Saisissez un mot-clé ci-dessus ou cliquez sur le nuage.';
   document.getElementById('evoChart').innerHTML='';
   document.getElementById('evoNote').textContent='';
+  currentEvoSerie = [];
   renderTopArticles();
 }
 
@@ -700,16 +562,16 @@ function exportArticlesCSV(){
     `"${(a.titre||'').replace(/"/g,'""')}"`,
     a.date || '',
     `"${(a.auteurs||[]).map(au=>au.nom||'?').join(';')}"`,
-    `"${(a.pays||[]).join(';')}"`,
+    `"${(a.pays||(a.auteurs||[]).map(au=>au.pays)||[]).join(';')}"`,
     a.citations || 0,
-    `"${Object.keys(a._kw).join(';')}"`,
-    a.id || '',
-    `"https://arxiv.org/search/?searchtype=all&query=${encodeURIComponent(a.titre)}"`,
+    `"${(a.mots_cles||[]).join(';')}"`,
+    urlArticle(a.id) || '',
+    `"https://arxiv.org/search/?searchtype=all&query=${encodeURIComponent(a.titre||'')}"`,
   ]);
   const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
   const blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const el = document.createElement('a');
+  const url  = URL.createObjectURL(blob);
+  const el   = document.createElement('a');
   el.href = url;
   el.download = `articles_${EVO_WORD ? EVO_WORD + '_' : ''}${new Date().toISOString().slice(0,10)}.csv`;
   el.click();
@@ -719,30 +581,24 @@ function exportArticlesCSV(){
 
 /* ══ Init (page unique) ═════════════════════════════════════════════════ */
 async function initApp() {
-  toast('Chargement des données…', 1800);
-  await chargerReferentiel();
+  toast('Chargement des données depuis l’API…', 1800);
 
   try {
-    const bruts = await fetchTousLesArticles((n) => toast(`Chargement… ${n.toLocaleString('fr-FR')} articles`, 1200));
-    ARTICLES = bruts.map(normaliserArticle);
+    const [moisData, statsData] = await Promise.all([fetchMois(), fetchStatsGlobales()]);
+    MONTH_ORDER    = moisData.mois || [];
+    STATS_GLOBALES = statsData;
   } catch(e) {
-    console.error('Erreur lors du chargement des articles', e);
-    ARTICLES = [];
-    toast('⚠ API indisponible — vérifie que le backend Flask est démarré');
+    console.error('Erreur lors du chargement initial', e);
+    toast('⚠ API indisponible — vérifie que le backend Flask est démarré et que bdd.db est bien téléchargée');
   }
-
-  construireAgregats();
-  DERIVED_STATS.total_articles  = ARTICLES.length;
-  DERIVED_STATS.total_citations = ARTICLES.reduce((s,a)=>s+(a.citations||0),0);
-  DERIVED_STATS.total_mois      = MONTH_ORDER.length;
 
   ACTIVE_MONTH = '';
   initMonthPills();
-  renderCloud(ACTIVE_MONTH);
+  await renderCloud(ACTIVE_MONTH);
   renderStatStrip();
+  await loadPaysEtCarte();
   renderEvoSuggestions();
   await renderTopArticles();
-  await loadPaysEtCarte();       // met aussi à jour total_pays + renderStatStrip()
   setTimeout(renderMap, 100);
 }
 initApp();
