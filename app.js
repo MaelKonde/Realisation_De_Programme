@@ -62,26 +62,16 @@ function extraireMotsArticle(indexJsonStr) {
   return resultat;
 }
 
-/* ══ Accès API ═════════════════════════════════════════════════════════ */
-async function fetchCompteArticles() {
-  const r = await fetch(`${API}/articles/count`);
-  if (!r.ok) throw new Error(`API ${r.status} sur /articles/count`);
-  return (await r.json()).total;
-}
-async function fetchPageArticles(numero, taille) {
-  const r = await fetch(`${API}/articles/page/${numero}?taille=${taille}`);
-  if (!r.ok) throw new Error(`API ${r.status} sur /articles/page/${numero}`);
+/* ══ Accès API (ajout) ═══════════════════════════════════════════════════ */
+async function fetchArticlesRecherche({ mot, q, mois, limite = 20 } = {}) {
+  const params = new URLSearchParams();
+  if (mot)   params.set('mot', mot);
+  if (q)     params.set('q', q);
+  if (mois)  params.set('mois', mois);
+  params.set('limite', limite);
+  const r = await fetch(`${API}/articles/recherche?${params}`);
+  if (!r.ok) throw new Error(`API ${r.status} sur /articles/recherche`);
   return r.json();
-}
-
-const _authCache = {};
-function fetchAuteurs(idArticle) {
-  if (_authCache[idArticle]) return _authCache[idArticle];
-  const p = fetch(`${API}/auteurs/${encodeURIComponent(idArticle)}`)
-    .then(r => { if (!r.ok) throw new Error(`API ${r.status} sur /auteurs`); return r.json(); })
-    .catch(err => { console.error(err); return []; });
-  _authCache[idArticle] = p;
-  return p;
 }
 
 /** Lance `worker(item)` sur chaque élément de `items`, au plus `concurrency`
@@ -102,21 +92,32 @@ async function avecConcurrenceLimitee(items, worker, concurrency = 6) {
 
 /** Charge TOUS les articles par petites pages plutôt qu'en un seul appel
  *  géant (voir le commentaire en tête de fichier). */
-async function fetchTousLesArticles(onProgress) {
-  const taille = APP_CONFIG.TAILLE_PAGE_ARTICLES;
-  const total = await fetchCompteArticles();
-  const nbPages = Math.max(1, Math.ceil(total / taille));
-  const numerosDePage = Array.from({ length: nbPages }, (_, i) => i);
+/* ══ ARTICLES (remplace l'ancienne version qui filtrait ARTICLES) ═══════ */
+async function renderTopArticles(keyword) {
+  const sub = document.getElementById('articlesSub');
+  if (sub) sub.textContent = 'Recherche des articles…';
 
-  let charges = 0;
-  const pages = await avecConcurrenceLimitee(numerosDePage, async (numero) => {
-    const page = await fetchPageArticles(numero, taille);
-    charges += page.length;
-    if (onProgress) onProgress(charges, total);
-    return page;
-  }, APP_CONFIG.CONCURRENCE_PAGES);
+  let arts;
+  try {
+    const bruts = await fetchArticlesRecherche({
+      mot: keyword || '',
+      mois: ACTIVE_MONTH || '',
+      limite: 20,
+    });
+    arts = bruts.map(a => ({
+      ...normaliserArticle(a),
+      auteurs: a.auteurs || [],
+      pays: [...new Set((a.auteurs || []).map(au => au.pays).filter(Boolean))],
+    }));
+  } catch (err) {
+    console.error(err);
+    toast('Erreur pendant la recherche d\'articles');
+    arts = [];
+  }
 
-  return pages.flat();
+  CURRENT_ARTICLES = arts;
+  updateArticlesHeader(keyword, arts.length);
+  displayArticles(arts, keyword);
 }
 
 /* ══ État applicatif ═══════════════════════════════════════════════════ */
