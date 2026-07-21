@@ -68,6 +68,45 @@ def page_articles(numero):
     ]
     return jsonify(articles)
 
+# api_flask.py
+
+@application.route("/agregats/nuage")
+def agregats_nuage():
+    """Nuage de mots précalculé par mois + global.
+    Calculé une fois via un script batch (precompute.py), stocké
+    dans une table `agregats` ou un fichier JSON servi tel quel."""
+    connexion = connecter_bdd()
+    curseur = connexion.cursor()
+    curseur.execute("SELECT valeur FROM agregats WHERE cle = 'nuage_mots'")
+    ligne = curseur.fetchone()
+    connexion.close()
+    return application.response_class(ligne["valeur"], mimetype="application/json")
+
+@application.route("/articles/recherche")
+def recherche_articles():
+    """Recherche + tri fait par SQL, pas par le navigateur."""
+    q = request.args.get("q", "")
+    mois = request.args.get("mois", "")
+    limite = min(int(request.args.get("limite", 20)), 100)
+    connexion = connecter_bdd()
+    curseur = connexion.cursor()
+    conditions, params = [], []
+    if q:
+        conditions.append("titre LIKE ?")
+        params.append(f"%{q}%")
+    if mois:
+        conditions.append("date LIKE ?")
+        params.append(f"{mois}%")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    curseur.execute(f"""
+        SELECT id, titre, date, langue, citations
+        FROM articles {where}
+        ORDER BY citations DESC LIMIT ?
+    """, (*params, limite))
+    lignes = curseur.fetchall()
+    connexion.close()
+    return jsonify([dict(l) for l in lignes])
+
 @application.route("/articles/<int:limite>")
 def liste_articles(limite):
     """Conservé pour compatibilité — préférer /articles/page/<n> pour
