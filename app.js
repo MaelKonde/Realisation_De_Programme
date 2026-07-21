@@ -361,6 +361,24 @@ const ISO_A2_MAP = {
 };
 const NUM_TO_A2 = Object.fromEntries(Object.entries(ISO_A2_MAP).map(([a2,num])=>[num,a2]));
 
+/** Taille de police (en unités locales SVG, avant contre-scale par le
+ *  zoom) pour le code à 2 lettres d'une bulle, calculée en PROPORTION de
+ *  son rayon plutôt qu'un choix binaire (8px/6px) : garantit que le texte
+ *  tient toujours dans sa bulle, quelle que soit sa taille. */
+function tailleFontePourBulle(rBase) {
+  return Math.max(4, rBase * 0.9);
+}
+/** Un pays n'affiche son code que si sa bulle est assez grande pour que le
+ *  texte y tienne confortablement. ⚠ Ce seuil est volontairement FIXE
+ *  (indépendant du zoom) : comme les bulles gardent une taille apparente
+ *  CONSTANTE à l'écran quel que soit le zoom (contre-scale par 1/k), une
+ *  bulle minuscule le reste à tout niveau de zoom — la faire "apparaître"
+ *  en zoomant ne lui donne pas plus de place, ça fait juste déborder le
+ *  texte. */
+function bulleAssezGrandePourTexte(rBase) {
+  return rBase > 13;
+}
+
 /** Construit countryMap à partir d'un ÉCHANTILLON (les articles les plus
  *  cités, toutes dates confondues) — voir le commentaire en tête de
  *  fichier pour pourquoi on ne peut pas le faire sur tous les articles. */
@@ -418,9 +436,13 @@ function renderMap(){
   mapProjection = d3.geoNaturalEarth1().scale(W / 6.5).translate([W/2, H/2]);
   mapPath = d3.geoPath().projection(mapProjection);
 
-  // ⚠ FIX : contre-scale des bulles/textes/traits au
-  // zoom, pour qu'ils gardent une taille apparente constante à l'écran au
-  // lieu de grossir avec le niveau de zoom (illisible sur l'Europe).
+  // ⚠ FIX carte (taille des bulles au zoom) + FIX labels (révélation
+  // progressive des petits pays en zoomant, au lieu d'un seuil figé) :
+  // Contre-scale : bulles/textes/traits gardent une taille apparente
+  // constante à l'écran au lieu de grossir avec le zoom (bug carte n°1).
+  // Le texte utilise la MÊME fonction que la création initiale (voir
+  // tailleFontePourBulle/bulleAssezGrandePourTexte) pour ne jamais
+  // déborder de sa bulle, à aucun niveau de zoom (bug n°2).
   mapZoom = d3.zoom().scaleExtent([1, 8]).on('zoom', (event) => {
     const k = event.transform.k;
     mapG.attr('transform', event.transform);
@@ -428,7 +450,8 @@ function renderMap(){
       .attr('r', d => (d.rBase || 4) / k)
       .attr('stroke-width', 1.2 / k);
     mapG.selectAll('.bubble-label')
-      .attr('font-size', d => ((d.rBase || 0) > 18 ? 8 : 6) / k);
+      .style('font-size', d => (tailleFontePourBulle(d.rBase || 0) / k) + 'px')
+      .text(d => bulleAssezGrandePourTexte(d.rBase || 0) ? d.code : '');
     mapG.selectAll('.country').attr('stroke-width', 0.3 / k);
   });
   svg.call(mapZoom);
@@ -496,8 +519,6 @@ function updateMapBubbles(){
     .filter(d => d.xy);
 
   const rScale = d3.scaleSqrt().domain([0, maxVol]).range([4, 28]);
-  // ⚠ FIX : rayon de base mémorisé sur chaque bulle, réutilisé
-  // par le handler de zoom pour contre-scaler.
   bubbleData.forEach(d => { d.rBase = rScale(d.vol); });
 
   const groups = mapG.selectAll('.bubble-group')
@@ -518,8 +539,8 @@ function updateMapBubbles(){
   groups.append('text')
     .attr('class','bubble-label')
     .attr('x', d=>d.xy[0]).attr('y', d=>d.xy[1])
-    .text(d => d.rBase > 13 ? d.code : '')
-    .attr('font-size', d => d.rBase > 18 ? '8' : '6')
+    .text(d => bulleAssezGrandePourTexte(d.rBase) ? d.code : '')   // état initial (zoom = x1)
+    .style('font-size', d => tailleFontePourBulle(d.rBase) + 'px')
     .attr('fill','#fff').attr('text-anchor','middle').attr('dominant-baseline','central')
     .attr('pointer-events','none');
 
@@ -596,12 +617,10 @@ function traceEvolution(word){
   renderTopArticles(EVO_WORD);
 }
 
-/** ⚠ FIX : matching par inclusion plutôt qu'égalité stricte.
- *  "data" seul n'existe pas comme clé exacte dans key_word.json (seules des
- *  expressions comme "data mining"/"big data" y figurent) — sans ça,
- *  chercher "data" ne trouvait jamais rien dans MONTHLY_KW alors que des
- *  articles en parlent bien (visible dans la recherche par titre, qui elle
- *  n'a pas ce problème). */
+/** Matching par inclusion plutôt qu'égalité stricte : "data" seul n'existe
+ *  pas comme clé exacte dans key_word.json (seules des expressions comme
+ *  "data mining"/"big data" y figurent) — sans ça, chercher "data" ne
+ *  trouvait jamais rien dans MONTHLY_KW. */
 function poidsMotDansMois(mot, kwMois) {
   if (!kwMois) return 0;
   let total = 0;
