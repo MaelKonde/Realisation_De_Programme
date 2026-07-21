@@ -15,5 +15,5 @@ const APP_CONFIG = {
   // tous les articles (des milliers de requêtes). La carte par pays est
   // donc calculée sur un ÉCHANTILLON : les N articles les plus cités,
   // toutes dates confondues.
-  NB_ARTICLES_POUR_CARTE_PAYS: 300,
+  NB_ARTICLES_POUR_CARTE_PAYS: 1000,
 };
