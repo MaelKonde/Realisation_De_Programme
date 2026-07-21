@@ -142,6 +142,11 @@ header.scrolled {
   gap: 8px;
 }
 
+.header-right a {
+  text-decoration: none;
+  color: inherit;
+}
+
 .hpill {
   font-size: 11px;
   font-weight: 500;
