@@ -1,29 +1,12 @@
-/* ══════════════════════════════════════════════════════════════════════
-   LOGIQUE APPLICATIVE — Tendances Scientifiques
-   ══════════════════════════════════════════════════════════════════════
-   Dépend de : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
-   key_word.json (référentiel de mots-clés, servi statiquement à côté de
-   index.html — même dépôt que le front). Ces fichiers doivent être
-   chargés AVANT celui-ci dans index.html.
+/*
+Nom........ : app.js
+Description : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
+              key_word.json (référentiel de mots-clés, servi statiquement à côté de
+              index.html — même dépôt que le front). Ces fichiers doivent être
+              chargés AVANT celui-ci dans index.html.
+Usage...... : Charger après data.js et config.js
+*/
 
-   ⚠ api_flask.py ne fait AUCUN calcul de mots-clés — il renvoie des
-   données brutes (/articles/count, /articles/page/<n>, /auteurs/<id>).
-   Tout (nuage, carte par pays, évolution, suggestions) est calculé ici.
-
-   Deux contraintes structurelles à garder en tête :
-   1. TOUS les articles sont chargés, mais par PAGES (voir
-      fetchTousLesArticles) — jamais en un seul appel géant, qui peut
-      saturer le service quelle que soit sa RAM.
-   2. /auteurs/<id> est un appel PAR ARTICLE. Le nuage / l'évolution /
-      les suggestions n'en ont pas besoin (seulement de
-      index_inverse_compte). Seules deux vues en ont besoin, et sont donc
-      volontairement limitées :
-        - la liste "articles les plus cités" : auteurs récupérés
-          uniquement pour les ~20 articles réellement affichés.
-        - la carte par pays : calculée sur un ÉCHANTILLON (les
-          APP_CONFIG.NB_ARTICLES_POUR_CARTE_PAYS articles les plus cités,
-          toutes dates confondues), pas sur l'intégralité de la base.
-   ══════════════════════════════════════════════════════════════════════ */
 
 const API = APP_CONFIG.BACKEND_API_URL;
 
