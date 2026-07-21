@@ -20,8 +20,9 @@ et elles sont indispensables (pas de confort, de vrais blocages) :
      articles réels (testé : voir la conversation).
 """
 
+import json
 import sqlite3
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, Response, stream_with_context
 from flask_cors import CORS
 
 application = Flask(__name__)
@@ -39,34 +40,63 @@ def health():
     return jsonify({"status": "ok"})
 
 
-@application.route("/articles/<int:limite>")
-def liste_articles(limite):
+@application.route("/articles/count")
+def compter_articles():
+    """Nombre total de lignes dans `articles` — permet au front de savoir
+    combien de pages demander (voir /articles/<limite>?offset=...)."""
     connexion = connecter_bdd()
     curseur = connexion.cursor()
+    curseur.execute("SELECT COUNT(*) AS n FROM articles")
+    total = curseur.fetchone()["n"]
+    connexion.close()
+    return jsonify({"total": total})
 
+
+@application.route("/articles/<int:limite>")
+def liste_articles(limite):
+    """Renvoie une PAGE d'articles (paramètre ?offset=... pour les pages
+    suivantes), en streamant la réponse ligne par ligne plutôt que de
+    construire toute la liste en mémoire avant de répondre.
+
+    ⚠ Pourquoi le streaming est indispensable ici (et pas juste "plus de
+    RAM") : jsonify(une_grosse_liste) construit d'abord TOUTE la liste
+    Python en mémoire, PUIS sérialise TOUT le JSON en une seule chaîne,
+    PUIS l'envoie — pendant tout ce temps, le worker gunicorn qui traite
+    cette requête est bloqué et ne peut répondre à rien d'autre (y compris
+    /health). En streamant ligne par ligne, la mémoire utilisée reste
+    proportionnelle à UNE ligne à la fois, peu importe la taille totale de
+    la base — et le corps de la réponse commence à partir tout de suite.
+    """
+    offset = request.args.get("offset", 0, type=int)
+
+    connexion = connecter_bdd()
+    curseur = connexion.cursor()
     curseur.execute("""
         SELECT id, titre, date, langue, citations, index_inverse_compte
         FROM articles
         ORDER BY date DESC
-        LIMIT ?
-    """, (limite,))
+        LIMIT ? OFFSET ?
+    """, (limite, offset))
 
-    lignes = curseur.fetchall()
-    connexion.close()
+    def generer():
+        yield "["
+        premiere_ligne = True
+        for ligne in curseur:
+            if not premiere_ligne:
+                yield ","
+            premiere_ligne = False
+            yield json.dumps({
+                "id": ligne["id"],
+                "titre": ligne["titre"],
+                "date": ligne["date"],
+                "langue": ligne["langue"],
+                "citations": ligne["citations"],
+                "index_inverse_compte": ligne["index_inverse_compte"],
+            })
+        yield "]"
+        connexion.close()
 
-    articles = [
-        {
-            "id": ligne["id"],
-            "titre": ligne["titre"],
-            "date": ligne["date"],
-            "langue": ligne["langue"],
-            "citations": ligne["citations"],
-            "index_inverse_compte": ligne["index_inverse_compte"],
-        }
-        for ligne in lignes
-    ]
-
-    return jsonify(articles)
+    return Response(stream_with_context(generer()), mimetype="application/json")
 
 
 @application.route("/auteurs/<path:id_article>")
