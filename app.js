@@ -1,15 +1,20 @@
 /* ══════════════════════════════════════════════════════════════════════
    LOGIQUE APPLICATIVE — Tendances Scientifiques (architecture "front-first")
    ══════════════════════════════════════════════════════════════════════
-   Dépend de : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO),
-   et key_word.json (référentiel de mots-clés, servi statiquement à côté
-   de index.html — même dépôt que le front).
+   Dépend de : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO).
 
-   ⚠ CHOIX D'ARCHITECTURE : api_flask.py ne fait ICI aucun calcul — il
-   renvoie des données brutes (/articles/<limite>, /auteurs/<id_article>).
-   Tout (nuage de mots, carte par pays, évolution, suggestions, stats) est
-   calculé ici, dans le navigateur. Deux conséquences importantes :
+   ⚠ CHOIX D'ARCHITECTURE : api_flask.py ne fait AUCUNE agrégation par
+   mois/pays (pas de nuage/carte/évolution calculés côté serveur) — ça
+   reste calculé ICI, dans le navigateur, à partir des articles bruts.
+   EN REVANCHE, depuis la dernière itération, le FILTRAGE par key_word.json
+   (quels mots sont des "mots-clés" scientifiques) se fait côté serveur :
+   /articles/<limite> renvoie directement `mots_cles: {mot: poids}` déjà
+   filtré, pas index_inverse_compte brut. Raison : envoyer 80-150 mots
+   bruts par article pour n'en garder que 5-20 après filtrage gaspillait
+   ~90% de la bande passante — c'était la cause principale des ~3 minutes
+   de chargement complet (voir la conversation).
 
+   Conséquences pratiques :
    1. TOUS les articles sont chargés automatiquement, mais PAGE PAR PAGE
       (via /articles/<n>?offset=...) plutôt qu'en un seul appel géant, pour
       ne pas saturer la mémoire/le worker du service (vécu : ça faisait
@@ -18,8 +23,8 @@
    2. /auteurs/<id_article> est un appel PAR ARTICLE. Appeler ça pour des
       milliers d'articles ferait des milliers de requêtes HTTP — donc :
         - le nuage de mots / l'évolution / les suggestions n'ont PAS besoin
-          des auteurs (uniquement de index_inverse_compte) → aucun appel
-          /auteurs nécessaire pour ces vues.
+          des auteurs (uniquement de mots_cles) → aucun appel /auteurs
+          nécessaire pour ces vues.
         - la liste "articles les plus cités" ne va chercher les auteurs
           QUE pour les ~20 articles réellement affichés.
         - la carte par pays est calculée sur un ÉCHANTILLON (les
@@ -29,62 +34,6 @@
    ══════════════════════════════════════════════════════════════════════ */
 
 const API = APP_CONFIG.BACKEND_API_URL;
-
-/* ══ Référentiel de mots-clés (key_word.json), chargé une fois ══════════ */
-let MOTS_CLES_SIMPLES = new Set(); // mots simples (1 token) autorisés
-let PHRASES_CLES = [];              // [{mots:[...], phrase:"..."}] (2+ tokens)
-
-async function chargerReferentiel() {
-  try {
-    const categories = await fetch('key_word.json').then(r => r.json());
-    Object.values(categories).forEach(termes => {
-      termes.forEach(terme => {
-        const t = terme.toLowerCase().trim();
-        if (!t) return;
-        const mots = t.split(' ');
-        if (mots.length === 1) MOTS_CLES_SIMPLES.add(mots[0]);
-        else PHRASES_CLES.push({ mots, phrase: t });
-      });
-    });
-  } catch (err) {
-    console.error('key_word.json introuvable/invalide — aucun mot-clé ne sera détecté.', err);
-  }
-}
-
-/** Reproduit côté client la logique de l'API précédente : ne garde que les
- *  mots/expressions du référentiel. Pour une expression composée, le
- *  format de index_inverse_compte est un simple compteur (pas des
- *  positions), donc pas de vérification de contiguïté possible : on
- *  vérifie juste que tous les mots de l'expression sont présents, avec un
- *  poids = le minimum de leurs comptes. */
-function extraireMotsArticle(indexJsonStr) {
-  const resultat = {};
-  if (!indexJsonStr) return resultat;
-  let compte;
-  try { compte = JSON.parse(indexJsonStr); } catch { return resultat; }
-  if (!compte || typeof compte !== 'object') return resultat;
-
-  const normalise = {};
-  Object.entries(compte).forEach(([mot, val]) => {
-    const m = mot.toLowerCase().trim();
-    const n = Number(val);
-    if (!Number.isFinite(n)) return;
-    normalise[m] = (normalise[m] || 0) + n;
-  });
-
-  Object.entries(normalise).forEach(([mot, n]) => {
-    if (MOTS_CLES_SIMPLES.has(mot)) resultat[mot] = (resultat[mot] || 0) + n;
-  });
-
-  PHRASES_CLES.forEach(({ mots, phrase }) => {
-    if (mots.every(m => m in normalise)) {
-      const poids = Math.min(...mots.map(m => normalise[m]));
-      resultat[phrase] = (resultat[phrase] || 0) + poids;
-    }
-  });
-
-  return resultat;
-}
 
 /* ══ Accès API bruts ═══════════════════════════════════════════════════ */
 
@@ -168,7 +117,7 @@ function normaliserArticle(raw) {
     mois: (raw.date || '').slice(0, 7),
     langue: raw.langue || 'en',
     citations: raw.citations || 0,
-    _kw: extraireMotsArticle(raw.index_inverse_compte),
+    _kw: raw.mots_cles || {},   // déjà filtré par key_word.json côté serveur
     auteurs: null,   // rempli à la demande via fetchAuteurs()
     pays: [],
   };
@@ -724,7 +673,6 @@ function exportArticlesCSV(){
 /* ══ Init (page unique) ═════════════════════════════════════════════════ */
 async function initApp() {
   toast('Chargement des données…', 1800);
-  await chargerReferentiel();
 
   try {
     const bruts = await fetchTousLesArticles((n) => toast(`Chargement… ${n.toLocaleString('fr-FR')} articles`, 1200));
