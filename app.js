@@ -364,19 +364,22 @@ const NUM_TO_A2 = Object.fromEntries(Object.entries(ISO_A2_MAP).map(([a2,num])=>
 /** Taille de police (en unités locales SVG, avant contre-scale par le
  *  zoom) pour le code à 2 lettres d'une bulle, calculée en PROPORTION de
  *  son rayon plutôt qu'un choix binaire (8px/6px) : garantit que le texte
- *  tient toujours dans sa bulle, quelle que soit sa taille. */
+ *  tient toujours dans sa bulle, quelle que soit sa taille. Plancher à 6px
+ *  (au lieu de 4px) pour rester lisible même sur la plus petite bulle
+ *  possible (rBase=4, le minimum de l'échelle rScale) — vérifié : à ce
+ *  plancher, le texte tient encore avec de la marge (largeur ~7.2,
+ *  diamètre de la bulle = 8). */
 function tailleFontePourBulle(rBase) {
-  return Math.max(4, rBase * 0.9);
+  return Math.max(6, rBase * 0.9);
 }
-/** Un pays n'affiche son code que si sa bulle est assez grande pour que le
- *  texte y tienne confortablement. ⚠ Ce seuil est volontairement FIXE
- *  (indépendant du zoom) : comme les bulles gardent une taille apparente
- *  CONSTANTE à l'écran quel que soit le zoom (contre-scale par 1/k), une
- *  bulle minuscule le reste à tout niveau de zoom — la faire "apparaître"
- *  en zoomant ne lui donne pas plus de place, ça fait juste déborder le
- *  texte. */
+/** ⚠ Avant, un seuil (rBase > 13) cachait le code des petits pays "pour
+ *  éviter que le texte déborde" — mais la formule ci-dessus garantit déjà
+ *  qu'il n'y a jamais de débordement, à AUCUNE taille de bulle. Ce seuil
+ *  ne servait donc plus à rien et empêchait juste la moitié des pays
+ *  d'afficher leur code. Tous les pays présents sur la carte affichent
+ *  maintenant leurs initiales. */
 function bulleAssezGrandePourTexte(rBase) {
-  return rBase > 13;
+  return true;
 }
 
 /** Construit countryMap à partir d'un ÉCHANTILLON (les articles les plus
