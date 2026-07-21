@@ -141,6 +141,18 @@ function formatMonthLabel(moisIso) {
   return `${MOIS_FR[idx]} ${annee}`;
 }
 
+/** Version courte pour les colonnes de la timeline (largeur limitée) :
+ *  année sur 2 chiffres, jamais tronquée. Remplace l'ancien
+ *  `formatMonthLabel(m).slice(0,7)` qui coupait la fin de l'année
+ *  ("Sept 2025" -> "Sept 20", "Mars 2025" -> "Mars 20"). */
+function formatMonthLabelCourt(moisIso) {
+  if (!moisIso) return moisIso;
+  const [annee, m] = moisIso.split('-');
+  const idx = parseInt(m, 10) - 1;
+  if (!annee || Number.isNaN(idx) || idx < 0 || idx > 11) return moisIso;
+  return `${MOIS_FR[idx]} ${annee.slice(-2)}`;
+}
+
 function normaliserArticle(raw) {
   return {
     id: raw.id,
@@ -406,7 +418,19 @@ function renderMap(){
   mapProjection = d3.geoNaturalEarth1().scale(W / 6.5).translate([W/2, H/2]);
   mapPath = d3.geoPath().projection(mapProjection);
 
-  mapZoom = d3.zoom().scaleExtent([1, 8]).on('zoom', (event) => mapG.attr('transform', event.transform));
+  // ⚠ FIX : contre-scale des bulles/textes/traits au
+  // zoom, pour qu'ils gardent une taille apparente constante à l'écran au
+  // lieu de grossir avec le niveau de zoom (illisible sur l'Europe).
+  mapZoom = d3.zoom().scaleExtent([1, 8]).on('zoom', (event) => {
+    const k = event.transform.k;
+    mapG.attr('transform', event.transform);
+    mapG.selectAll('.bubble')
+      .attr('r', d => (d.rBase || 4) / k)
+      .attr('stroke-width', 1.2 / k);
+    mapG.selectAll('.bubble-label')
+      .attr('font-size', d => ((d.rBase || 0) > 18 ? 8 : 6) / k);
+    mapG.selectAll('.country').attr('stroke-width', 0.3 / k);
+  });
   svg.call(mapZoom);
 
   mapG = svg.append('g');
@@ -472,6 +496,9 @@ function updateMapBubbles(){
     .filter(d => d.xy);
 
   const rScale = d3.scaleSqrt().domain([0, maxVol]).range([4, 28]);
+  // ⚠ FIX : rayon de base mémorisé sur chaque bulle, réutilisé
+  // par le handler de zoom pour contre-scaler.
+  bubbleData.forEach(d => { d.rBase = rScale(d.vol); });
 
   const groups = mapG.selectAll('.bubble-group')
     .data(bubbleData, d=>d.code)
@@ -486,13 +513,13 @@ function updateMapBubbles(){
     .attr('fill', d => d.code===ACTIVE_COUNTRY ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)')
     .attr('stroke','rgba(255,255,255,.7)').attr('stroke-width',1.2)
     .transition().duration(600).ease(d3.easeCubicOut)
-    .attr('r', d => rScale(d.vol));
+    .attr('r', d => d.rBase);
 
   groups.append('text')
     .attr('class','bubble-label')
     .attr('x', d=>d.xy[0]).attr('y', d=>d.xy[1])
-    .text(d => rScale(d.vol) > 13 ? d.code : '')
-    .attr('font-size', d => rScale(d.vol) > 18 ? '8' : '6')
+    .text(d => d.rBase > 13 ? d.code : '')
+    .attr('font-size', d => d.rBase > 18 ? '8' : '6')
     .attr('fill','#fff').attr('text-anchor','middle').attr('dominant-baseline','central')
     .attr('pointer-events','none');
 
@@ -569,8 +596,21 @@ function traceEvolution(word){
   renderTopArticles(EVO_WORD);
 }
 
+/** ⚠ FIX : matching par inclusion plutôt qu'égalité stricte.
+ *  "data" seul n'existe pas comme clé exacte dans key_word.json (seules des
+ *  expressions comme "data mining"/"big data" y figurent) — sans ça,
+ *  chercher "data" ne trouvait jamais rien dans MONTHLY_KW alors que des
+ *  articles en parlent bien (visible dans la recherche par titre, qui elle
+ *  n'a pas ce problème). */
+function poidsMotDansMois(mot, kwMois) {
+  if (!kwMois) return 0;
+  let total = 0;
+  Object.entries(kwMois).forEach(([k, v]) => { if (k.includes(mot)) total += v; });
+  return total;
+}
+
 function renderEvoChart(){
-  const vals = MONTH_ORDER.map(m => (MONTHLY_KW[m]||{})[EVO_WORD] || 0);
+  const vals = MONTH_ORDER.map(m => poidsMotDansMois(EVO_WORD, MONTHLY_KW[m]));
   const maxV = Math.max(...vals, 1);
   const hasData = vals.some(v=>v>0);
 
@@ -586,13 +626,13 @@ function renderEvoChart(){
     return `<div class="tl-col${isActive?' hi':''}" onclick="setMonth('${m}',${i})">
       <div class="tl-val" style="font-size:9px;color:var(--text-3);">${vals[i]>0?Math.round(vals[i]):'—'}</div>
       <div class="tl-bar" style="height:${h}px;${vals[i]>0?'background:var(--gold)':''}"></div>
-      <div class="tl-lbl">${formatMonthLabel(m).slice(0,7)}</div>
+      <div class="tl-lbl">${formatMonthLabelCourt(m)}</div>
     </div>`;
   }).join('');
 
   const note=document.getElementById('evoNote');
   if(note) note.textContent=hasData
-    ?`Score = fréquence cumulée du mot dans les articles chargés du mois`
+    ?`Score = fréquence cumulée du mot (et des expressions qui le contiennent) dans les articles chargés du mois`
     :"Ce mot n'apparaît pas dans les données chargées. Essayez un synonyme.";
 }
 
