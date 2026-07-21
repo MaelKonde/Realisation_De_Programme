@@ -10,11 +10,10 @@
    Tout (nuage de mots, carte par pays, évolution, suggestions, stats) est
    calculé ici, dans le navigateur. Deux conséquences importantes :
 
-   1. /articles/<limite> est appelé UNE FOIS avec un grand nombre
-      (APP_CONFIG.NB_ARTICLES_A_CHARGER) pour ramener un maximum
-      d'articles d'un coup (l'API n'a pas de notion de "tous les mois" ni
-      de filtre par date) ; le filtrage par mois se fait ensuite en JS à
-      partir du champ `date` de chaque article.
+   1. TOUS les articles sont chargés automatiquement, mais PAGE PAR PAGE
+      (via /articles/<n>?offset=...) plutôt qu'en un seul appel géant, pour
+      ne pas saturer la mémoire/le worker du service (vécu : ça faisait
+      échouer le health check Render). Voir fetchTousLesArticles().
 
    2. /auteurs/<id_article> est un appel PAR ARTICLE. Appeler ça pour des
       milliers d'articles ferait des milliers de requêtes HTTP — donc :
@@ -88,10 +87,28 @@ function extraireMotsArticle(indexJsonStr) {
 }
 
 /* ══ Accès API bruts ═══════════════════════════════════════════════════ */
-async function fetchArticlesBruts(limite) {
-  const r = await fetch(`${API}/articles/${limite}`);
-  if (!r.ok) throw new Error(`API ${r.status} sur /articles/${limite}`);
-  return r.json();
+
+/** Charge TOUS les articles, page par page (via ?offset=...), plutôt qu'en
+ *  un seul appel. Deux raisons :
+ *  1. Un seul appel /articles/<très grand nombre> peut saturer la mémoire
+ *     et le worker du service gratuit/petit sur Render (voir la
+ *     conversation : ça faisait planter le health check).
+ *  2. Ça permet d'afficher une progression et de ne pas geler l'onglet le
+ *     temps de tout récupérer d'un coup. */
+async function fetchTousLesArticles(onProgress) {
+  const TAILLE_PAGE = APP_CONFIG.TAILLE_PAGE_ARTICLES || 2000;
+  const tout = [];
+  let offset = 0;
+  while (true) {
+    const r = await fetch(`${API}/articles/${TAILLE_PAGE}?offset=${offset}`);
+    if (!r.ok) throw new Error(`API ${r.status} sur /articles/${TAILLE_PAGE}?offset=${offset}`);
+    const page = await r.json();
+    tout.push(...page);
+    if (onProgress) onProgress(tout.length);
+    if (page.length < TAILLE_PAGE) break; // dernière page atteinte
+    offset += TAILLE_PAGE;
+  }
+  return tout;
 }
 
 const _authCache = {};
@@ -710,7 +727,7 @@ async function initApp() {
   await chargerReferentiel();
 
   try {
-    const bruts = await fetchArticlesBruts(APP_CONFIG.NB_ARTICLES_A_CHARGER);
+    const bruts = await fetchTousLesArticles((n) => toast(`Chargement… ${n.toLocaleString('fr-FR')} articles`, 1200));
     ARTICLES = bruts.map(normaliserArticle);
   } catch(e) {
     console.error('Erreur lors du chargement des articles', e);
