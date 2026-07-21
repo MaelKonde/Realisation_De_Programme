@@ -21,5 +21,5 @@ const APP_CONFIG = {
   // auteurs/pays — /auteurs/<id> est un appel par article, donc ce nombre
   // est volontairement limité pour rester praticable dans un navigateur
   // (voir le commentaire détaillé dans app.js, section "CARTE DU MONDE").
-  NB_ARTICLES_POUR_CARTE_PAYS: 1000,
+  NB_ARTICLES_POUR_CARTE_PAYS: 500,
 };
