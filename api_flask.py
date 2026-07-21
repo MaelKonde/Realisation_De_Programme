@@ -1,33 +1,8 @@
 """
 Nom........ : api_flask.py
-Description : Renvoie les données de la base de données par le biais d'une API Flask
-
-⚠ Version "front-first" : ce fichier reste volontairement proche de la
-version de départ (routes simples, aucune logique de mots-clés côté
-serveur). Tout le calcul (nuage de mots, carte par pays, évolution,
-suggestions, stats) est fait côté client dans app.js, à partir de
-key_word.json et des données brutes renvoyées ici.
-
-Modifications par rapport à la toute première version, chacune corrigeant
-un blocage réel (pas du confort) :
-  1. CORS activé — sans ça, le navigateur bloque toute requête cross-origin
-     depuis le front (domaine différent de l'API), avant même qu'elle ne
-     parte. Pas contournable côté front, quel que soit le code de app.js.
-  2. `index_inverse_compte` ajouté au SELECT — sans lui, aucune donnée sur
-     les mots-clés n'atteint jamais le navigateur.
-  3. `<id_article>` -> `<path:id_article>` — l'id d'un article est une URL
-     OpenAlex complète (https://openalex.org/W123...), qui contient des
-     "/". Le convertisseur Flask par défaut ne matche PAS les "/", donc
-     /auteurs/<id_article> renvoyait un 404 sur absolument tous les
-     articles réels (testé et confirmé).
-  4. /articles/count + /articles/page/<numero> ajoutés — un seul appel
-     /articles/<très_grand_nombre> pour "tout charger d'un coup" peut
-     saturer le service (temps de requête + sérialisation JSON d'un coup
-     trop long/gros), quelle que soit la RAM allouée à l'instance. La
-     pagination borne le coût de CHAQUE requête individuelle, donc plus de
-     risque de timeout/OOM peu importe la taille totale de la base.
-     /articles/<limite> est conservé pour compatibilité mais ne devrait
-     plus être utilisé pour charger tout le jeu de données d'un coup.
+Description : API Flask pour "Tendances Scientifiques" (nuage de mots par mois,
+               carte mondiale par pays, évolution temporelle d'un mot-clé,
+               articles les plus cités).
 """
 
 import sqlite3
@@ -37,17 +12,14 @@ from flask_cors import CORS
 application = Flask(__name__)
 CORS(application)
 
-
 def connecter_bdd():
     connexion = sqlite3.connect("bdd.db")
     connexion.row_factory = sqlite3.Row
     return connexion
 
-
 @application.route("/health")
 def health():
     return jsonify({"status": "ok"})
-
 
 @application.route("/articles/count")
 def compter_articles():
@@ -59,7 +31,6 @@ def compter_articles():
     total = curseur.fetchone()["n"]
     connexion.close()
     return jsonify({"total": total})
-
 
 @application.route("/articles/page/<int:numero>")
 def page_articles(numero):
@@ -97,7 +68,6 @@ def page_articles(numero):
     ]
     return jsonify(articles)
 
-
 @application.route("/articles/<int:limite>")
 def liste_articles(limite):
     """Conservé pour compatibilité — préférer /articles/page/<n> pour
@@ -130,7 +100,6 @@ def liste_articles(limite):
 
     return jsonify(articles)
 
-
 @application.route("/auteurs/<path:id_article>")
 def liste_auteurs(id_article):
     connexion = connecter_bdd()
@@ -154,7 +123,6 @@ def liste_auteurs(id_article):
     ]
 
     return jsonify(auteurs)
-
 
 if __name__ == "__main__":
     application.run(debug=True)
