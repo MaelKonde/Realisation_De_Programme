@@ -4,27 +4,7 @@ Description : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
               key_word.json (référentiel de mots-clés, servi statiquement à côté de
               index.html — même dépôt que le front). Ces fichiers doivent être
               chargés AVANT celui-ci dans index.html.
-
-              Ne charge pas tous les articles dans le navigateur :
-                - le nuage de mots (par mois + global) vient précalculé de
-                  /agregats/nuage ;
-                - la carte du monde par pays vient précalculée de
-                  /agregats/carte, calculée sur L'INTÉGRALITÉ du corpus, à
-                  la fois globalement ET par mois (voir CARTE_DATA /
-                  appliquerCarteMois ci-dessous) ;
-                - la liste d'articles affichée (top cités, résultats de
-                  recherche) vient de /articles/recherche, qui embarque déjà
-                  les auteurs (plus d'appel séparé par article).
-              Les trois routes s'appuient sur des tables précalculées une
-              fois par precompute.py côté serveur.
-
-              La carte réagit maintenant au changement de mois (setMonth) :
-              /agregats/carte est chargée UNE SEULE FOIS au démarrage et
-              contient déjà la répartition par pays pour chaque mois, donc
-              changer de mois ne déclenche aucun nouvel appel réseau — juste
-              une bascule locale + une transition D3 sur les bulles.
 Usage...... : Charger après data.js et config.js
-Auteur .....: Script généré par claude.ia
 */
 
 
@@ -83,58 +63,70 @@ function extraireMotsArticle(indexJsonStr) {
 }
 
 /* ══ Accès API ═════════════════════════════════════════════════════════ */
-
-/** Nuage de mots précalculé (par mois + global) — quelques centaines de Ko
- *  au lieu de télécharger les 500 000+ articles pour le recalculer. */
-async function fetchAgregatsNuage() {
-  const r = await fetch(`${API}/agregats/nuage`);
-  if (!r.ok) throw new Error(`API ${r.status} sur /agregats/nuage`);
+async function fetchCompteArticles() {
+  const r = await fetch(`${API}/articles/count`);
+  if (!r.ok) throw new Error(`API ${r.status} sur /articles/count`);
+  return (await r.json()).total;
+}
+async function fetchPageArticles(numero, taille) {
+  const r = await fetch(`${API}/articles/page/${numero}?taille=${taille}`);
+  if (!r.ok) throw new Error(`API ${r.status} sur /articles/page/${numero}`);
   return r.json();
 }
 
-/** Répartition par pays précalculée sur TOUT le corpus, globale ET par
- *  mois — chargée une seule fois, voir CARTE_DATA. */
-async function fetchAgregatsCarte() {
-  const r = await fetch(`${API}/agregats/carte`);
-  if (!r.ok) throw new Error(`API ${r.status} sur /agregats/carte`);
-  return r.json();
+const _authCache = {};
+function fetchAuteurs(idArticle) {
+  if (_authCache[idArticle]) return _authCache[idArticle];
+  const p = fetch(`${API}/auteurs/${encodeURIComponent(idArticle)}`)
+    .then(r => { if (!r.ok) throw new Error(`API ${r.status} sur /auteurs`); return r.json(); })
+    .catch(err => { console.error(err); return []; });
+  _authCache[idArticle] = p;
+  return p;
 }
 
-/** Recherche/filtrage d'articles fait côté serveur (SQL indexé), auteurs
- *  déjà embarqués dans la réponse. Sans aucun paramètre : top articles par
- *  citations (utilisé pour la liste "articles à fort impact"). */
-async function fetchArticlesRecherche({ mot = '', q = '', mois = '', limite = 20 } = {}) {
-  const params = new URLSearchParams();
-  if (mot) params.set('mot', mot);
-  if (q) params.set('q', q);
-  if (mois) params.set('mois', mois);
-  params.set('limite', limite);
-  const r = await fetch(`${API}/articles/recherche?${params}`);
-  if (!r.ok) throw new Error(`API ${r.status} sur /articles/recherche`);
-  return r.json();
+/** Lance `worker(item)` sur chaque élément de `items`, au plus `concurrency`
+ *  en parallèle — nécessaire aussi bien pour la pagination des articles que
+ *  pour /auteurs/<id> (un appel par article). */
+async function avecConcurrenceLimitee(items, worker, concurrency = 6) {
+  const resultats = new Array(items.length);
+  let curseur = 0;
+  async function travailleur() {
+    while (curseur < items.length) {
+      const i = curseur++;
+      resultats[i] = await worker(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, travailleur));
+  return resultats;
+}
+
+/** Charge TOUS les articles par petites pages plutôt qu'en un seul appel
+ *  géant (voir le commentaire en tête de fichier). */
+async function fetchTousLesArticles(onProgress) {
+  const taille = APP_CONFIG.TAILLE_PAGE_ARTICLES;
+  const total = await fetchCompteArticles();
+  const nbPages = Math.max(1, Math.ceil(total / taille));
+  const numerosDePage = Array.from({ length: nbPages }, (_, i) => i);
+
+  let charges = 0;
+  const pages = await avecConcurrenceLimitee(numerosDePage, async (numero) => {
+    const page = await fetchPageArticles(numero, taille);
+    charges += page.length;
+    if (onProgress) onProgress(charges, total);
+    return page;
+  }, APP_CONFIG.CONCURRENCE_PAGES);
+
+  return pages.flat();
 }
 
 /* ══ État applicatif ═══════════════════════════════════════════════════ */
-let MONTHLY_KW       = {}; // { "2025-03": {mot:poids}, ... } — précalculé côté serveur
-let GLOBAL_KW        = {}; // agrégat tous mois confondus — précalculé côté serveur
+let ARTICLES        = [];  // tous les articles, normalisés + _kw calculé
+let MONTHLY_KW       = {}; // { "2025-03": {mot:poids}, ... }
+let MONTHLY_ARTICLE_COUNT = {}; // { "2025-03": nombre_articles, ... }
+let GLOBAL_KW        = {}; // agrégat tous mois confondus
 let MONTH_ORDER      = [];
-let countryMap       = {}; // vue COURANTE (dérivée de CARTE_DATA selon ACTIVE_MONTH)
-
-/** Données brutes complètes reçues de /agregats/carte : contient déjà tout
- *  (global + chaque mois), donc changer de mois ne redemande jamais rien
- *  au serveur — voir appliquerCarteMois(). */
-let CARTE_DATA = {
-  global: { par_pays: {}, total_pays: 0, total_articles_avec_pays: 0 },
-  par_mois: {},
-};
-
-let DERIVED_STATS    = {
-  total_articles: 0,
-  total_citations: 0,
-  total_mois: 0,
-  total_pays: null,
-  total_articles_avec_pays: null,
-};
+let countryMap       = {}; // { code: {total, mots:[{mot,poids}]} } — échantillon
+let DERIVED_STATS    = { total_articles: 0, total_citations: 0, total_mois: 0, total_pays: null };
 
 let ACTIVE_MONTH     = '';
 let ACTIVE_COUNTRY   = null;
@@ -162,11 +154,7 @@ function formatMonthLabelCourt(moisIso) {
   return `${MOIS_FR[idx]} ${annee.slice(-2)}`;
 }
 
-/** Normalise un article brut renvoyé par /articles/recherche. `auteurs` est
- *  déjà embarqué par le serveur (sinon tableau vide) — plus besoin d'appel
- *  séparé à /auteurs/<id> par article. */
 function normaliserArticle(raw) {
-  const auteurs = raw.auteurs || [];
   return {
     id: raw.id,
     titre: raw.titre || 'Sans titre',
@@ -175,9 +163,28 @@ function normaliserArticle(raw) {
     langue: raw.langue || 'en',
     citations: raw.citations || 0,
     _kw: extraireMotsArticle(raw.index_inverse_compte),
-    auteurs,
-    pays: [...new Set(auteurs.map(au => au.pays).filter(Boolean))],
+    auteurs: null,   // rempli à la demande via fetchAuteurs()
+    pays: [],
   };
+}
+
+function construireAgregats() {
+  MONTHLY_KW = {};
+  MONTHLY_ARTICLE_COUNT = {};
+  ARTICLES.forEach(a => {
+    if (!a.mois) return;
+    MONTHLY_KW[a.mois] = MONTHLY_KW[a.mois] || {};
+    Object.entries(a._kw).forEach(([w, c]) => {
+      MONTHLY_KW[a.mois][w] = (MONTHLY_KW[a.mois][w] || 0) + c;
+    });
+    MONTHLY_ARTICLE_COUNT[a.mois] = (MONTHLY_ARTICLE_COUNT[a.mois] || 0) + 1;
+  });
+  MONTH_ORDER = Object.keys(MONTHLY_KW).sort();
+
+  GLOBAL_KW = {};
+  Object.values(MONTHLY_KW).forEach(kw => {
+    Object.entries(kw).forEach(([w, c]) => { GLOBAL_KW[w] = (GLOBAL_KW[w] || 0) + c; });
+  });
 }
 
 /* ══ Particules (fond du hero) ═════════════════════════════════════════ */
@@ -227,22 +234,20 @@ function renderStatStrip(){
   const topKW = Object.entries((ACTIVE_MONTH ? MONTHLY_KW[ACTIVE_MONTH] : GLOBAL_KW) || {})
     .sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
   const totalPaysAffiche = DERIVED_STATS.total_pays===null ? '…' : DERIVED_STATS.total_pays;
-
-  const notePays = DERIVED_STATS.total_articles_avec_pays
-    ? `sur ${DERIVED_STATS.total_articles_avec_pays.toLocaleString('fr-FR')} art. avec pays identifié${ACTIVE_MONTH ? ' ce mois' : ''}`
-    : 'aucune donnée pour ce mois';
-
+  const totalArticlesAffiche = ACTIVE_MONTH
+    ? (MONTHLY_ARTICLE_COUNT[ACTIVE_MONTH] || 0)
+    : DERIVED_STATS.total_articles;
   document.getElementById('statStrip').innerHTML=`
-    <div class="stat-card"><div class="stat-label">Articles chargés</div>
+    <div class="stat-card"><div class="stat-label">Articles chargés (${ACTIVE_MONTH?formatMonthLabel(ACTIVE_MONTH):'tous les mois'})</div>
       <div class="stat-val g" id="sc-tot">0</div><div class="stat-note">arXiv via OpenAlex</div></div>
     <div class="stat-card"><div class="stat-label">Mois couverts</div>
       <div class="stat-val">${DERIVED_STATS.total_mois}</div></div>
-    <div class="stat-card"><div class="stat-label">Pays</div>
-      <div class="stat-val">${totalPaysAffiche}</div><div class="stat-note">${notePays}</div></div>
+    <div class="stat-card"><div class="stat-label">Pays (échantillon)</div>
+      <div class="stat-val">${totalPaysAffiche}</div></div>
     <div class="stat-card"><div class="stat-label">Mot top (${ACTIVE_MONTH?formatMonthLabel(ACTIVE_MONTH):'tous les mois'})</div>
       <div class="stat-val" style="font-size:1rem;padding-top:3px;font-style:italic;">${topKW}</div></div>
   `;
-  setTimeout(()=>animCount(document.getElementById('sc-tot'),DERIVED_STATS.total_articles),80);
+  setTimeout(()=>animCount(document.getElementById('sc-tot'),totalArticlesAffiche),80);
 }
 
 /* ══ Cloud ═════════════════════════════════════════════════════════════ */
@@ -302,15 +307,11 @@ function initMonthPills(){
   });
 }
 
-/** Change de mois : met à jour le nuage de mots-clés ET la carte des pays
- *  (les deux sont précalculés, donc c'est instantané — aucun appel réseau
- *  supplémentaire). */
 function setMonth(m,i){
   ACTIVE_MONTH=m;
   document.querySelectorAll('.m-pill').forEach((b,j)=>b.classList.toggle('active',j===i+1));
   renderCloud(m);
-  appliquerCarteMois(m);
-  renderTopArticles(EVO_WORD || undefined);
+  renderStatStrip();
   if(EVO_WORD) renderEvoChart();
 }
 
@@ -387,66 +388,84 @@ function bulleAssezGrandePourTexte(rBase) {
   return true;
 }
 
-/** Légende sous la carte : précise la couverture pour la vue courante
- *  (globale ou filtrée par mois). */
-function updateMapCoverageNote(){
-  const container = document.getElementById('mapContainer');
-  if(!container) return;
-  let note = document.getElementById('mapSampleNote');
-  if(!note){
-    note = document.createElement('div');
-    note.id = 'mapSampleNote';
-    note.style.cssText = 'font-size:12px;color:var(--text-3);margin-top:8px;text-align:center;font-style:italic;';
-    container.insertAdjacentElement('afterend', note);
+/** Construit countryMap à partir d'un ÉCHANTILLON (les articles les plus
+ *  cités, toutes dates confondues) — voir le commentaire en tête de
+ *  fichier pour pourquoi on ne peut pas le faire sur tous les articles. */
+/** Tire `n` éléments au hasard dans `tableau`, sans remise (mélange partiel
+ *  type Fisher-Yates : ne mélange que les `n` premières positions, pas tout
+ *  le tableau — reste efficace même sur des tableaux de centaines de
+ *  milliers d'éléments). */
+function tirerAuHasard(tableau, n) {
+  const copie = tableau.slice(); // copie superficielle (juste les références)
+  const limite = Math.min(n, copie.length);
+  for (let i = 0; i < limite; i++) {
+    const j = i + Math.floor(Math.random() * (copie.length - i));
+    [copie[i], copie[j]] = [copie[j], copie[i]];
   }
-  const n = DERIVED_STATS.total_articles_avec_pays;
-  const suffixe = ACTIVE_MONTH ? ` pour ${formatMonthLabel(ACTIVE_MONTH)}` : ' (toutes dates confondues)';
-  note.textContent = n
-    ? `Carte basée sur l'intégralité des articles indexés${suffixe} (${n.toLocaleString('fr-FR')} avec au moins un pays identifié).`
-    : `Aucun article avec un pays identifié${suffixe}.`;
+  return copie.slice(0, limite);
 }
 
-/** Bascule countryMap sur la vue globale ou sur un mois précis, à partir
- *  des données déjà chargées dans CARTE_DATA (aucun appel réseau). Met à
- *  jour les stats, la légende, les bulles de la carte (avec transition
- *  D3 fluide si la carte est déjà affichée), et rafraîchit le panneau
- *  latéral du pays actif s'il existe encore dans la nouvelle vue. */
-function appliquerCarteMois(mois){
-  const bloc = mois
-    ? (CARTE_DATA.par_mois[mois] || { par_pays: {}, total_pays: 0, total_articles_avec_pays: 0 })
-    : CARTE_DATA.global;
+/** Construit l'échantillon utilisé pour la carte par pays : un mix entre
+ *  les articles les plus cités (signal "fort impact") et un tirage
+ *  aléatoire parmi le reste (pour capturer aussi les mots-clés fréquents
+ *  mais pas particulièrement concentrés dans les articles les plus cités
+ *  — ex. "benchmark"/"dataset", très présents globalement mais absents du
+ *  top par citations). Ratio piloté par APP_CONFIG.RATIO_ALEATOIRE_CARTE_PAYS
+ *  (0.5 = moitié/moitié). */
+function construireEchantillonPaysMixte() {
+  const total = APP_CONFIG.NB_ARTICLES_POUR_CARTE_PAYS;
+  const ratioAleatoire = APP_CONFIG.RATIO_ALEATOIRE_CARTE_PAYS ?? 0.5;
+  const nAleatoire = Math.round(total * ratioAleatoire);
+  const nCites = total - nAleatoire;
 
-  countryMap = bloc.par_pays || {};
-  DERIVED_STATS.total_pays = bloc.total_pays || 0;
-  DERIVED_STATS.total_articles_avec_pays = bloc.total_articles_avec_pays || 0;
+  const triesParCitations = [...ARTICLES].sort((a,b)=>b.citations-a.citations);
+  const partieCites = triesParCitations.slice(0, nCites);
 
-  renderStatStrip();
-  updateMapCoverageNote();
+  const idsDejaPris = new Set(partieCites.map(a => a.id));
+  const reste = ARTICLES.filter(a => !idsDejaPris.has(a.id));
+  const partieAleatoire = tirerAuHasard(reste, nAleatoire);
 
-  if(mapInitialized) updateMapBubbles();
-
-  // Le pays actif peut ne plus exister dans ce mois (0 article) : on
-  // reporte alors sur le pays le plus représenté de la nouvelle vue.
-  if(!ACTIVE_COUNTRY || !countryMap[ACTIVE_COUNTRY]){
-    const premier = Object.entries(countryMap).sort((a,b)=>b[1].total-a[1].total)[0];
-    ACTIVE_COUNTRY = premier ? premier[0] : null;
-  }
-  if(ACTIVE_COUNTRY && document.getElementById('sidebarBars')){
-    selectCountry(ACTIVE_COUNTRY);
-  }
+  return [...partieCites, ...partieAleatoire];
 }
 
-/** Charge la répartition par pays (globale + par mois) une seule fois au
- *  démarrage, puis applique la vue correspondant au mois actif. */
 async function loadPaysEtCarte(){
+  const echantillon = construireEchantillonPaysMixte();
+
+  let traites = 0;
   try {
-    CARTE_DATA = await fetchAgregatsCarte();
+    await avecConcurrenceLimitee(echantillon, async (a) => {
+      a.auteurs = await fetchAuteurs(a.id);
+      a.pays = [...new Set(a.auteurs.map(au=>au.pays).filter(Boolean))];
+      traites++;
+      if (traites % 200 === 0) toast(`Chargement de la carte… ${traites}/${echantillon.length} articles`, 1200);
+    }, APP_CONFIG.CONCURRENCE_AUTEURS_CARTE);
   } catch(err) {
     console.error(err);
-    toast('Erreur pendant le chargement de la carte des pays');
-    CARTE_DATA = { global: { par_pays: {}, total_pays: 0, total_articles_avec_pays: 0 }, par_mois: {} };
+    toast('Erreur pendant le chargement des pays (auteurs)');
   }
-  appliquerCarteMois(ACTIVE_MONTH);
+
+  countryMap = {};
+  echantillon.forEach(a => {
+    a.pays.forEach(code => {
+      countryMap[code] = countryMap[code] || { total: 0, _kw: {} };
+      countryMap[code].total += 1;
+      Object.entries(a._kw).forEach(([w,c])=>{
+        countryMap[code]._kw[w] = (countryMap[code]._kw[w]||0)+c;
+      });
+    });
+  });
+  Object.values(countryMap).forEach(c=>{
+    c.mots = Object.entries(c._kw).sort((a,b)=>b[1]-a[1]).slice(0,14).map(([mot,poids])=>({mot,poids}));
+    delete c._kw;
+  });
+
+  DERIVED_STATS.total_pays = Object.keys(countryMap).length;
+  renderStatStrip();
+
+  if(!ACTIVE_COUNTRY){
+    const premier = Object.entries(countryMap).sort((a,b)=>b[1].total-a[1].total)[0];
+    if(premier) ACTIVE_COUNTRY = premier[0];
+  }
 }
 
 function renderMap(){
@@ -494,12 +513,23 @@ function renderMap(){
 
   d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world => {
     const countries = topojson.feature(world, world.objects.countries);
+
+    const maxVol = Math.max(...Object.values(countryMap).map(c=>c.total), 1);
+    const colorScale = d3.scaleSequential().domain([0, maxVol]).interpolator(d3.interpolate('#e8dcc8', '#c9963a'));
+
     mapG.selectAll('.country')
       .data(countries.features)
       .join('path')
-      .attr('class', 'country')
+      .attr('class', d => {
+        const a2 = NUM_TO_A2[String(d.id)];
+        return 'country' + (a2 && countryMap[a2] ? ' has-data' : '');
+      })
       .attr('d', mapPath)
-      .attr('fill', '#e8dcc8')
+      .attr('fill', d => {
+        const a2 = NUM_TO_A2[String(d.id)];
+        if(!a2 || !countryMap[a2]) return '#e8dcc8';
+        return colorScale(countryMap[a2].total);
+      })
       .attr('stroke','#c0aa88').attr('stroke-width',.3)
       .on('click', (event, d) => {
         const a2 = NUM_TO_A2[String(d.id)];
@@ -517,7 +547,7 @@ function renderMap(){
       .datum(topojson.mesh(world, world.objects.countries, (a,b)=>a!==b))
       .attr('d', mapPath).attr('fill','none').attr('stroke','rgba(255,255,255,.55)').attr('stroke-width',.4);
 
-    updateMapBubbles(); // colore les pays + place les bulles selon countryMap déjà chargé
+    updateMapBubbles();
   }).catch(err => {
     console.error('Erreur chargement carte:', err);
     const t=document.getElementById('sidebarTitle');
@@ -525,28 +555,11 @@ function renderMap(){
   });
 }
 
-/** Recolore les pays + repositionne les bulles selon countryMap COURANT
- *  (rappelée à chaque changement de mois, avec transition D3 fluide sur
- *  le rayon des bulles pour un rendu "site pro" plutôt qu'un rafraîchissement
- *  brutal). */
 function updateMapBubbles(){
   if(!mapG) return;
+  mapG.selectAll('.bubble-group').remove();
 
   const maxVol = Math.max(...Object.values(countryMap).map(c=>c.total), 1);
-  const colorScale = d3.scaleSequential().domain([0, maxVol]).interpolator(d3.interpolate('#e8dcc8', '#c9963a'));
-
-  // Recolore chaque pays selon les données du mois/de la vue active.
-  mapG.selectAll('.country')
-    .classed('has-data', d => {
-      const a2 = NUM_TO_A2[String(d.id)];
-      return !!(a2 && countryMap[a2]);
-    })
-    .transition().duration(400)
-    .attr('fill', d => {
-      const a2 = NUM_TO_A2[String(d.id)];
-      if(!a2 || !countryMap[a2]) return '#e8dcc8';
-      return colorScale(countryMap[a2].total);
-    });
 
   const bubbleData = Object.entries(CENTROIDS)
     .filter(([code]) => countryMap[code])
@@ -558,43 +571,26 @@ function updateMapBubbles(){
 
   const groups = mapG.selectAll('.bubble-group')
     .data(bubbleData, d=>d.code)
-    .join(
-      enter => {
-        const g = enter.append('g').attr('class','bubble-group').style('cursor','pointer');
-        g.append('circle')
-          .attr('class','bubble')
-          .attr('cx', d => d.xy[0]).attr('cy', d => d.xy[1])
-          .attr('r', 0)
-          .attr('fill', d => d.code===ACTIVE_COUNTRY ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)')
-          .attr('stroke','rgba(255,255,255,.7)').attr('stroke-width',1.2)
-          .transition().duration(500).ease(d3.easeCubicOut)
-          .attr('r', d => d.rBase);
-        g.append('text')
-          .attr('class','bubble-label')
-          .attr('x', d=>d.xy[0]).attr('y', d=>d.xy[1])
-          .text(d => bulleAssezGrandePourTexte(d.rBase) ? d.code : '')
-          .style('font-size', d => tailleFontePourBulle(d.rBase) + 'px')
-          .attr('fill','#fff').attr('text-anchor','middle').attr('dominant-baseline','central')
-          .attr('pointer-events','none');
-        return g;
-      },
-      update => {
-        // Mois différent : la bulle existe déjà -> anime sa taille au lieu
-        // de la recréer (transition fluide au changement de mois).
-        update.select('.bubble')
-          .transition().duration(500).ease(d3.easeCubicOut)
-          .attr('r', d => d.rBase);
-        update.select('.bubble-label')
-          .transition().duration(500)
-          .style('font-size', d => tailleFontePourBulle(d.rBase) + 'px');
-        return update;
-      },
-      exit => exit
-        .select('.bubble')
-        .transition().duration(300)
-        .attr('r', 0)
-        .on('end', function(){ d3.select(this.parentNode).remove(); })
-    );
+    .join('g')
+    .attr('class','bubble-group')
+    .style('cursor','pointer');
+
+  groups.append('circle')
+    .attr('class','bubble')
+    .attr('cx', d => d.xy[0]).attr('cy', d => d.xy[1])
+    .attr('r', 0)
+    .attr('fill', d => d.code===ACTIVE_COUNTRY ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)')
+    .attr('stroke','rgba(255,255,255,.7)').attr('stroke-width',1.2)
+    .transition().duration(600).ease(d3.easeCubicOut)
+    .attr('r', d => d.rBase);
+
+  groups.append('text')
+    .attr('class','bubble-label')
+    .attr('x', d=>d.xy[0]).attr('y', d=>d.xy[1])
+    .text(d => bulleAssezGrandePourTexte(d.rBase) ? d.code : '')   // état initial (zoom = x1)
+    .style('font-size', d => tailleFontePourBulle(d.rBase) + 'px')
+    .attr('fill','#fff').attr('text-anchor','middle').attr('dominant-baseline','central')
+    .attr('pointer-events','none');
 
   groups
     .on('mouseover', (event, d) => showMapTooltip(event, d.code))
@@ -637,12 +633,12 @@ function selectCountry(code, event){
   if(titre) titre.textContent = `${info.flag} ${info.label}`;
   const barres=document.getElementById('sidebarBars');
   if(barres){
-    barres.innerHTML = sorted.length ? sorted.map(({mot:w,poids:v})=>`
+    barres.innerHTML = sorted.map(({mot:w,poids:v})=>`
       <div class="bar-row">
         <span class="bar-label" title="${w}">${w}</span>
         <div class="bar-track"><div class="bar-fill" style="background:var(--teal)" data-w="${Math.round(v/maxV*100)}"></div></div>
         <span class="bar-count">${Math.round(v)}</span>
-      </div>`).join('') : `<p style="color:var(--text-3);font-size:13px;">Aucune donnée pour ce mois.</p>`;
+      </div>`).join('');
     animBars();
   }
 
@@ -650,7 +646,7 @@ function selectCountry(code, event){
     mapG.selectAll('.bubble').attr('fill', d => d.code===code ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)');
     mapG.selectAll('.country').classed('active', d => NUM_TO_A2[String(d.id)]===code);
   }
-  if(event) toast(`${info.flag} ${info.label} — ${sorted.length} mots-clés`);
+  toast(`${info.flag} ${info.label} — ${sorted.length} mots-clés`);
 }
 
 function resetMapZoom(){
@@ -703,8 +699,8 @@ function renderEvoChart(){
 
   const note=document.getElementById('evoNote');
   if(note) note.textContent=hasData
-    ?`Score = fréquence cumulée du mot (et des expressions qui le contiennent) dans les articles`
-    :"Ce mot n'apparaît pas dans les données. Essayez un synonyme.";
+    ?`Score = fréquence cumulée du mot (et des expressions qui le contiennent) dans les articles chargés du mois`
+    :"Ce mot n'apparaît pas dans les données chargées. Essayez un synonyme.";
 }
 
 function renderEvoSuggestions(){
@@ -719,26 +715,23 @@ function renderEvoSuggestions(){
 function renderMultiEvo(){ /* single page — removed */ }
 
 /* ══ ARTICLES ═══════════════════════════════════════════════════════════ */
-
-/** Recherche/filtre fait côté serveur (mot-clé -> table `mot_articles`
- *  indexée, mois -> filtre SQL) au lieu de filtrer un tableau de 500 000
- *  articles en mémoire. Auteurs déjà embarqués dans la réponse. */
 async function renderTopArticles(keyword){
   const sub = document.getElementById('articlesSub');
   if(sub) sub.textContent = 'Recherche des articles…';
 
-  let arts = [];
-  try {
-    const bruts = await fetchArticlesRecherche({
-      mot: keyword || '',
-      mois: ACTIVE_MONTH || '',
-      limite: 20,
-    });
-    arts = bruts.map(normaliserArticle);
-  } catch(err) {
-    console.error(err);
-    toast('Erreur pendant la recherche d\'articles');
+  let arts = ACTIVE_MONTH ? ARTICLES.filter(a=>a.mois===ACTIVE_MONTH) : ARTICLES;
+  if(keyword){
+    const kw = keyword.toLowerCase();
+    arts = arts.filter(a => (kw in a._kw) || (a.titre||'').toLowerCase().includes(kw));
   }
+  arts = [...arts].sort((a,b)=>b.citations-a.citations).slice(0,20);
+
+  try {
+    await avecConcurrenceLimitee(arts.filter(a=>a.auteurs===null), async (a) => {
+      a.auteurs = await fetchAuteurs(a.id);
+      a.pays = [...new Set(a.auteurs.map(au=>au.pays).filter(Boolean))];
+    }, 6);
+  } catch(err) { console.error(err); }
 
   CURRENT_ARTICLES = arts;
   updateArticlesHeader(keyword, arts.length);
@@ -764,7 +757,7 @@ function displayArticles(arts, keyword){
     container.innerHTML=
       `<div style="padding:2rem;text-align:center;color:var(--text-3);font-size:14px;">
         <div style="font-size:32px;opacity:.35;margin-bottom:10px;">🔍</div>
-        Aucun article trouvé${keyword ? ` pour <strong>"${keyword}"</strong>` : ''} dans les données.
+        Aucun article trouvé${keyword ? ` pour <strong>"${keyword}"</strong>` : ''} dans les données chargées.
         <div style="margin-top:8px;font-size:12px;">Essayez un autre mot du nuage.</div>
       </div>`;
     return;
@@ -841,17 +834,20 @@ async function initApp() {
   await chargerReferentiel();
 
   try {
-    const agregats = await fetchAgregatsNuage();
-    MONTHLY_KW = agregats.par_mois || {};
-    GLOBAL_KW  = agregats.global || {};
-    MONTH_ORDER = Object.keys(MONTHLY_KW).sort();
-    DERIVED_STATS.total_articles  = agregats.total_articles  || 0;
-    DERIVED_STATS.total_citations = agregats.total_citations || 0;
-    DERIVED_STATS.total_mois      = MONTH_ORDER.length;
+    const bruts = await fetchTousLesArticles((n, total) => {
+      toast(`Chargement des articles… ${n}/${total}`, 1500);
+    });
+    ARTICLES = bruts.map(normaliserArticle);
   } catch(e) {
-    console.error('Erreur lors du chargement des agrégats', e);
+    console.error('Erreur lors du chargement des articles', e);
+    ARTICLES = [];
     toast('⚠ API indisponible — vérifie que le backend Flask est démarré');
   }
+
+  construireAgregats();
+  DERIVED_STATS.total_articles  = ARTICLES.length;
+  DERIVED_STATS.total_citations = ARTICLES.reduce((s,a)=>s+(a.citations||0),0);
+  DERIVED_STATS.total_mois      = MONTH_ORDER.length;
 
   ACTIVE_MONTH = '';
   initMonthPills();
@@ -859,7 +855,7 @@ async function initApp() {
   renderStatStrip();
   renderEvoSuggestions();
   await renderTopArticles();
-  await loadPaysEtCarte();       // charge global + par_mois une seule fois
+  await loadPaysEtCarte();       // met aussi à jour total_pays + renderStatStrip()
   setTimeout(renderMap, 100);
 }
 initApp();
