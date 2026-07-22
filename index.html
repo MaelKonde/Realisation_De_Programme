@@ -18,7 +18,7 @@
 </head>
 <body>
 <body>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast"></div>  
 
 <!-- Header -->
 <header id="header">
@@ -26,8 +26,12 @@
     <a class="logo" href="#" onclick="window.scrollTo({top:0,behavior:'smooth'});return false;"><div class="logo-mark">✦</div><span>Veille</span><em>Scientifique</em></a>
 
     <div class="header-right">
-      <span class="hpill live">● OpenAlex · arXiv</span>
-    </div>
+  <span class="hpill live">
+    ● <a href="https://openalex.org/" target="_blank" rel="noopener noreferrer">OpenAlex</a>
+    ·
+    <a href="https://arxiv.org/" target="_blank" rel="noopener noreferrer">arXiv</a>
+  </span>
+</div>
   </div>
 </header>
 
@@ -37,7 +41,7 @@
   <div class="hero-overlay"></div>
   <canvas id="starCanvas"></canvas>
   <div class="container">
-    <div class="hero-eyebrow">✦ arXiv · OpenAlex · Fév 2025 → Mai 2026</div>
+    <div class="hero-eyebrow">✦ arXiv · OpenAlex · Fév 2025 → Juin 2026</div>
     <h1>Mots-clés <em>tendance</em><br>de la recherche mondiale</h1>
     <p class="hero-sub">Visualisez les sujets scientifiques dominants mois par mois et par pays, extraits de l'index inversé des abstracts arXiv via OpenAlex.</p>
   </div>
@@ -69,7 +73,7 @@
       <div class="section-head">
         <div>
           <div class="section-title">Carte mondiale des mots-clés</div>
-          <div class="section-sub">Basée sur les articles les plus cités (fort impact) par pays · Taille des bulles = volume · Cliquez sur un pays pour ses mots dominants</div>
+          <div class="section-sub">Taille des bulles = volume de recherche · Cliquez sur un pays pour ses mots dominants</div>
         </div>
         <button onclick="resetMapZoom()" style="font-size:12px;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--border-2);background:var(--cream);color:var(--text-2);cursor:pointer;">⟳ Recentrer</button>
       </div>
@@ -202,10 +206,18 @@
           Stack technique
         </div>
         <div style="display:flex;flex-direction:column;gap:5px;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:14px;">🐍</span>
-            <span style="font-size:12px;color:rgba(245,239,230,.6);">Python · OpenAlex API</span>
-          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <img 
+      src="https://www.python.org/static/community_logos/python-logo.png" 
+      alt="Python logo"
+      style="width:18px;height:18px;object-fit:contain;"
+    />
+    <span style="font-size:12px;color:rgba(245,239,230,.6);">
+      Python · OpenAlex API
+    </span>
+  </div>
+</div>
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="font-size:14px;">🗄️</span>
             <span style="font-size:12px;color:rgba(245,239,230,.6);">SQLite · Flask <span style="color:rgba(245,239,230,.28);font-size:11px;">(à venir)</span></span>
