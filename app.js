@@ -5,7 +5,7 @@ Description : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
               index.html — même dépôt que le front). Ces fichiers doivent être
               chargés AVANT celui-ci dans index.html.
 
-              ⚠ Version corrigée : ne charge plus jamais tous les articles
+              Ne charge pas tous les articles
               dans le navigateur. Le nuage de mots (par mois + global) vient
               précalculé de /agregats/nuage, et la liste d'articles affichée
               (top cités, résultats de recherche, échantillon pour la carte)
@@ -14,6 +14,7 @@ Description : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
               sur les tables `agregats`/`mot_articles` précalculées une fois
               par precompute.py côté serveur.
 Usage...... : Charger après data.js et config.js
+Auteur .....: Script généré par claude.ia
 */
 
 
