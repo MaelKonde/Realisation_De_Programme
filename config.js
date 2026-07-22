@@ -8,17 +8,12 @@ const APP_CONFIG = {
   TAILLE_PAGE_ARTICLES: 500,
   CONCURRENCE_PAGES: 3,
 
-  // /articles/recherche embarque les auteurs (GROUP_CONCAT), donc la carte
-  // par pays est calculée sur un ÉCHANTILLON : les N articles les plus
-  // cités, toutes dates confondues (pas un filtrage par mois — voir
-  // loadPaysEtCarte() dans app.js).
-  //
-  // ⚠ Cette valeur est plafonnée côté serveur par LIMITE_RECHERCHE_MAX
-  // dans api_flask.py (actuellement 47000). Une valeur ici supérieure au
-  // plafond serveur ne change RIEN en pratique : la requête est tronquée
-  // silencieusement à 47000 par l'API, mais le commentaire précédent
-  // laissait croire à tort que l'échantillon utilisé était de 600000
-  // articles. Garder cette constante synchronisée avec LIMITE_RECHERCHE_MAX
-  // évite ce genre de confusion — modifier les deux ensemble si besoin.
-  NB_ARTICLES_POUR_CARTE_PAYS: 47000,
+  // NB_ARTICLES_POUR_CARTE_PAYS a été retirée : la carte du monde par pays
+  // est désormais précalculée sur L'INTÉGRALITÉ du corpus par precompute.py
+  // (route /agregats/carte), et non plus construite côté front à partir
+  // d'un échantillon des articles les plus cités. Cet échantillonnage
+  // provoquait un biais (un mot-clé fréquent surtout dans des articles peu
+  // cités, comme "galaxy" ou "learning", était sous-représenté sur la
+  // carte alors qu'il apparaissait fort dans le nuage de mots/la frise
+  // d'évolution — voir loadPaysEtCarte() dans app.js).
 };
