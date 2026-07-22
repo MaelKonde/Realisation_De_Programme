@@ -3,13 +3,9 @@ Nom........ : api_flask.py
 Description : API Flask pour "Tendances Scientifiques" (nuage de mots par mois,
                carte mondiale par pays, évolution temporelle d'un mot-clé,
                articles les plus cités).
-
-               Le nuage de mots (/agregats/nuage) et la recherche/filtrage
-               d'articles (/articles/recherche) s'appuient sur les tables
-               `agregats` et `mot_articles`, précalculées une fois par
-               precompute.py — le navigateur ne télécharge/calcule plus
-               jamais sur les 500 000+ lignes de `articles`.
+Usage : python3 api_flask.py
 """
+
 import sqlite3
 
 from flask import Flask, jsonify, request
@@ -37,7 +33,7 @@ def health():
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Nouvelles routes (précalculées) — à utiliser par le front
+# Nouvelles routes (précalculées) — utiliseé par le front
 # ─────────────────────────────────────────────────────────────────────────
 
 @application.route("/agregats/nuage")
