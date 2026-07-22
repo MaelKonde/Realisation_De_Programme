@@ -17,7 +17,7 @@ CORS(application)
 # Plafond de sécurité pour /articles/recherche : couvre largement le plus
 # gros usage légitime (échantillon pour la carte des pays), sans permettre
 # un ?limite=1000000 qui recréerait le problème de départ.
-LIMITE_RECHERCHE_MAX = 40000
+LIMITE_RECHERCHE_MAX = 48000
 
 
 def connecter_bdd():
