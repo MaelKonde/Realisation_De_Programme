@@ -15,9 +15,10 @@ application = Flask(__name__)
 CORS(application)
 
 # Plafond de sécurité pour /articles/recherche : couvre largement le plus
-# gros usage légitime (échantillon pour la carte des pays), sans permettre
-# un ?limite=1000000 qui recréerait le problème de départ.
-LIMITE_RECHERCHE_MAX = 47500
+# gros usage légitime, sans permettre un ?limite=1000000 qui recréerait le
+# problème de départ. La carte des pays n'en dépend plus (voir
+# /agregats/carte, précalculée sur tout le corpus par precompute.py).
+LIMITE_RECHERCHE_MAX = 47000
 
 
 def connecter_bdd():
@@ -33,7 +34,7 @@ def health():
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Nouvelles routes (précalculées) — utiliseé par le front
+# Nouvelles routes (précalculées) — utilisées par le front
 # ─────────────────────────────────────────────────────────────────────────
 
 @application.route("/agregats/nuage")
@@ -60,6 +61,30 @@ def agregats_nuage():
     return application.response_class(ligne["valeur"], mimetype="application/json")
 
 
+@application.route("/agregats/carte")
+def agregats_carte():
+    """Répartition par pays précalculée sur TOUT le corpus (par
+    precompute.py, table `agregats`, clé `carte_pays`) — remplace l'ancien
+    fonctionnement où le front échantillonnait les articles les plus cités
+    via /articles/recherche, ce qui biaisait la carte en faveur des mots-clés
+    concentrés dans des articles très cités (et masquait ceux qui, bien que
+    fréquents, se trouvaient surtout dans des articles peu cités)."""
+    connexion = connecter_bdd()
+    curseur = connexion.cursor()
+    curseur.execute("SELECT valeur FROM agregats WHERE cle = 'carte_pays'")
+    ligne = curseur.fetchone()
+    connexion.close()
+
+    if not ligne:
+        return jsonify({
+            "par_pays": {},
+            "total_pays": 0,
+            "total_articles_avec_pays": 0,
+        })
+
+    return application.response_class(ligne["valeur"], mimetype="application/json")
+
+
 @application.route("/articles/recherche")
 def recherche_articles():
     """Recherche/filtrage d'articles fait entièrement en SQL (indexé), avec
@@ -73,7 +98,8 @@ def recherche_articles():
       - limite : nombre de résultats (défaut 20, plafonné à LIMITE_RECHERCHE_MAX).
 
     Sans aucun paramètre : renvoie le top articles par citations (utilisé
-    pour l'échantillon de la carte des pays).
+    pour la liste "articles à fort impact", plus pour la carte des pays qui
+    est désormais servie par /agregats/carte).
     """
     mot = (request.args.get("mot") or "").lower().strip()
     q = (request.args.get("q") or "").strip()
@@ -124,18 +150,14 @@ def recherche_articles():
             ORDER BY a.citations DESC
         """, params)
     else:
-        # Pas de mot-clé : recherche par titre et/ou mois, ou top articles bruts
-        # (utilisé sans filtre pour l'échantillon de la carte des pays).
+        # Pas de mot-clé : recherche par titre et/ou mois, ou top articles bruts.
         #
         # ⚠ Ne JAMAIS joindre `auteurs` avant d'avoir limité `articles` : avec
         # GROUP BY + ORDER BY + LIMIT sur une requête jointe, SQLite ne peut
         # pas utiliser l'index sur `citations` — il doit joindre + regrouper
-        # TOUTE la table avant de trier et de couper au LIMIT (mesuré : passe
-        # de ~150ms à ~9ms sur un jeu de 100k lignes en corrigeant ce point;
-        # à 500k+ lignes en production, c'est la cause des "quelques minutes"
-        # de chargement des pays/de la carte). Solution : sélectionner
-        # d'abord les IDs triés (index utilisé), puis ne joindre `auteurs`
-        # que sur ce petit ensemble.
+        # TOUTE la table avant de trier et de couper au LIMIT. Solution :
+        # sélectionner d'abord les IDs triés (index utilisé), puis ne
+        # joindre `auteurs` que sur ce petit ensemble.
         conditions, params = [], []
         if q:
             conditions.append("titre LIKE ?")
@@ -192,7 +214,7 @@ def recherche_articles():
 
 # ─────────────────────────────────────────────────────────────────────────
 # Routes historiques — conservées pour compatibilité, non appelées par le
-# front depuis le passage à /agregats/nuage + /articles/recherche.
+# front depuis le passage à /agregats/nuage + /agregats/carte + /articles/recherche.
 # ─────────────────────────────────────────────────────────────────────────
 
 @application.route("/articles/count")
