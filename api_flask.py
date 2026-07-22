@@ -63,12 +63,21 @@ def agregats_nuage():
 
 @application.route("/agregats/carte")
 def agregats_carte():
-    """Répartition par pays précalculée sur TOUT le corpus (par
-    precompute.py, table `agregats`, clé `carte_pays`) — remplace l'ancien
-    fonctionnement où le front échantillonnait les articles les plus cités
-    via /articles/recherche, ce qui biaisait la carte en faveur des mots-clés
-    concentrés dans des articles très cités (et masquait ceux qui, bien que
-    fréquents, se trouvaient surtout dans des articles peu cités)."""
+    """Répartition par pays précalculée sur TOUT le corpus (precompute.py,
+    table `agregats`, clé `carte_pays`) — remplace l'ancien fonctionnement
+    où le front échantillonnait les articles les plus cités via
+    /articles/recherche (biaisé en faveur des mots-clés concentrés dans les
+    articles très cités, et figé quel que soit le mois choisi).
+
+    Format de la réponse :
+        {
+          "global":   { "par_pays": {code: {total, mots}}, "total_pays", "total_articles_avec_pays" },
+          "par_mois": { "2025-05": { ... même structure ... }, ... }
+        }
+
+    Le front charge cette route UNE SEULE FOIS au démarrage et bascule
+    ensuite entre "global" et "par_mois[<mois>]" localement (aucun nouvel
+    appel réseau nécessaire pour changer de mois)."""
     connexion = connecter_bdd()
     curseur = connexion.cursor()
     curseur.execute("SELECT valeur FROM agregats WHERE cle = 'carte_pays'")
@@ -77,9 +86,8 @@ def agregats_carte():
 
     if not ligne:
         return jsonify({
-            "par_pays": {},
-            "total_pays": 0,
-            "total_articles_avec_pays": 0,
+            "global": {"par_pays": {}, "total_pays": 0, "total_articles_avec_pays": 0},
+            "par_mois": {},
         })
 
     return application.response_class(ligne["valeur"], mimetype="application/json")
@@ -98,8 +106,7 @@ def recherche_articles():
       - limite : nombre de résultats (défaut 20, plafonné à LIMITE_RECHERCHE_MAX).
 
     Sans aucun paramètre : renvoie le top articles par citations (utilisé
-    pour la liste "articles à fort impact", plus pour la carte des pays qui
-    est désormais servie par /agregats/carte).
+    pour la liste "articles à fort impact").
     """
     mot = (request.args.get("mot") or "").lower().strip()
     q = (request.args.get("q") or "").strip()
