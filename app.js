@@ -4,17 +4,7 @@ Description : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
               key_word.json (référentiel de mots-clés, servi statiquement à côté de
               index.html — même dépôt que le front). Ces fichiers doivent être
               chargés AVANT celui-ci dans index.html.
-
-              Ne charge pas tous les articles
-              dans le navigateur. Le nuage de mots (par mois + global) vient
-              précalculé de /agregats/nuage, et la liste d'articles affichée
-              (top cités, résultats de recherche, échantillon pour la carte)
-              vient de /articles/recherche — qui embarque déjà les auteurs
-              (plus d'appel séparé par article). Les deux routes s'appuient
-              sur les tables `agregats`/`mot_articles` précalculées une fois
-              par precompute.py côté serveur.
 Usage...... : Charger après data.js et config.js
-Auteur .....: Script généré par claude.ia
 */
 
 
@@ -73,32 +63,66 @@ function extraireMotsArticle(indexJsonStr) {
 }
 
 /* ══ Accès API ═════════════════════════════════════════════════════════ */
-
-/** Nuage de mots précalculé (par mois + global) — quelques centaines de Ko
- *  au lieu de télécharger les 500 000+ articles pour le recalculer. */
-async function fetchAgregatsNuage() {
-  const r = await fetch(`${API}/agregats/nuage`);
-  if (!r.ok) throw new Error(`API ${r.status} sur /agregats/nuage`);
+async function fetchCompteArticles() {
+  const r = await fetch(`${API}/articles/count`);
+  if (!r.ok) throw new Error(`API ${r.status} sur /articles/count`);
+  return (await r.json()).total;
+}
+async function fetchPageArticles(numero, taille) {
+  const r = await fetch(`${API}/articles/page/${numero}?taille=${taille}`);
+  if (!r.ok) throw new Error(`API ${r.status} sur /articles/page/${numero}`);
   return r.json();
 }
 
-/** Recherche/filtrage d'articles fait côté serveur (SQL indexé), auteurs
- *  déjà embarqués dans la réponse. Sans aucun paramètre : top articles par
- *  citations (utilisé pour l'échantillon de la carte des pays). */
-async function fetchArticlesRecherche({ mot = '', q = '', mois = '', limite = 20 } = {}) {
-  const params = new URLSearchParams();
-  if (mot) params.set('mot', mot);
-  if (q) params.set('q', q);
-  if (mois) params.set('mois', mois);
-  params.set('limite', limite);
-  const r = await fetch(`${API}/articles/recherche?${params}`);
-  if (!r.ok) throw new Error(`API ${r.status} sur /articles/recherche`);
-  return r.json();
+const _authCache = {};
+function fetchAuteurs(idArticle) {
+  if (_authCache[idArticle]) return _authCache[idArticle];
+  const p = fetch(`${API}/auteurs/${encodeURIComponent(idArticle)}`)
+    .then(r => { if (!r.ok) throw new Error(`API ${r.status} sur /auteurs`); return r.json(); })
+    .catch(err => { console.error(err); return []; });
+  _authCache[idArticle] = p;
+  return p;
+}
+
+/** Lance `worker(item)` sur chaque élément de `items`, au plus `concurrency`
+ *  en parallèle — nécessaire aussi bien pour la pagination des articles que
+ *  pour /auteurs/<id> (un appel par article). */
+async function avecConcurrenceLimitee(items, worker, concurrency = 6) {
+  const resultats = new Array(items.length);
+  let curseur = 0;
+  async function travailleur() {
+    while (curseur < items.length) {
+      const i = curseur++;
+      resultats[i] = await worker(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, travailleur));
+  return resultats;
+}
+
+/** Charge TOUS les articles par petites pages plutôt qu'en un seul appel
+ *  géant (voir le commentaire en tête de fichier). */
+async function fetchTousLesArticles(onProgress) {
+  const taille = APP_CONFIG.TAILLE_PAGE_ARTICLES;
+  const total = await fetchCompteArticles();
+  const nbPages = Math.max(1, Math.ceil(total / taille));
+  const numerosDePage = Array.from({ length: nbPages }, (_, i) => i);
+
+  let charges = 0;
+  const pages = await avecConcurrenceLimitee(numerosDePage, async (numero) => {
+    const page = await fetchPageArticles(numero, taille);
+    charges += page.length;
+    if (onProgress) onProgress(charges, total);
+    return page;
+  }, APP_CONFIG.CONCURRENCE_PAGES);
+
+  return pages.flat();
 }
 
 /* ══ État applicatif ═══════════════════════════════════════════════════ */
-let MONTHLY_KW       = {}; // { "2025-03": {mot:poids}, ... } — précalculé côté serveur
-let GLOBAL_KW        = {}; // agrégat tous mois confondus — précalculé côté serveur
+let ARTICLES        = [];  // tous les articles, normalisés + _kw calculé
+let MONTHLY_KW       = {}; // { "2025-03": {mot:poids}, ... }
+let GLOBAL_KW        = {}; // agrégat tous mois confondus
 let MONTH_ORDER      = [];
 let countryMap       = {}; // { code: {total, mots:[{mot,poids}]} } — échantillon
 let DERIVED_STATS    = { total_articles: 0, total_citations: 0, total_mois: 0, total_pays: null };
@@ -129,11 +153,7 @@ function formatMonthLabelCourt(moisIso) {
   return `${MOIS_FR[idx]} ${annee.slice(-2)}`;
 }
 
-/** Normalise un article brut renvoyé par /articles/recherche. `auteurs` est
- *  déjà embarqué par le serveur (sinon tableau vide) — plus besoin d'appel
- *  séparé à /auteurs/<id> par article. */
 function normaliserArticle(raw) {
-  const auteurs = raw.auteurs || [];
   return {
     id: raw.id,
     titre: raw.titre || 'Sans titre',
@@ -142,9 +162,26 @@ function normaliserArticle(raw) {
     langue: raw.langue || 'en',
     citations: raw.citations || 0,
     _kw: extraireMotsArticle(raw.index_inverse_compte),
-    auteurs,
-    pays: [...new Set(auteurs.map(au => au.pays).filter(Boolean))],
+    auteurs: null,   // rempli à la demande via fetchAuteurs()
+    pays: [],
   };
+}
+
+function construireAgregats() {
+  MONTHLY_KW = {};
+  ARTICLES.forEach(a => {
+    if (!a.mois) return;
+    MONTHLY_KW[a.mois] = MONTHLY_KW[a.mois] || {};
+    Object.entries(a._kw).forEach(([w, c]) => {
+      MONTHLY_KW[a.mois][w] = (MONTHLY_KW[a.mois][w] || 0) + c;
+    });
+  });
+  MONTH_ORDER = Object.keys(MONTHLY_KW).sort();
+
+  GLOBAL_KW = {};
+  Object.values(MONTHLY_KW).forEach(kw => {
+    Object.entries(kw).forEach(([w, c]) => { GLOBAL_KW[w] = (GLOBAL_KW[w] || 0) + c; });
+  });
 }
 
 /* ══ Particules (fond du hero) ═════════════════════════════════════════ */
@@ -269,7 +306,6 @@ function setMonth(m,i){
   document.querySelectorAll('.m-pill').forEach((b,j)=>b.classList.toggle('active',j===i+1));
   renderCloud(m);
   renderStatStrip();
-  renderTopArticles(EVO_WORD || undefined);
   if(EVO_WORD) renderEvoChart();
 }
 
@@ -347,20 +383,23 @@ function bulleAssezGrandePourTexte(rBase) {
 }
 
 /** Construit countryMap à partir d'un ÉCHANTILLON (les articles les plus
- *  cités, toutes dates confondues), obtenu directement via
- *  /articles/recherche (auteurs déjà embarqués — plus d'appel séparé par
- *  article). Voir le commentaire en tête de fichier pour pourquoi on ne
- *  peut pas le faire sur tous les articles. */
+ *  cités, toutes dates confondues) — voir le commentaire en tête de
+ *  fichier pour pourquoi on ne peut pas le faire sur tous les articles. */
 async function loadPaysEtCarte(){
-  let echantillon = [];
+  const echantillon = [...ARTICLES].sort((a,b)=>b.citations-a.citations)
+    .slice(0, APP_CONFIG.NB_ARTICLES_POUR_CARTE_PAYS);
+
+  let traites = 0;
   try {
-    const bruts = await fetchArticlesRecherche({
-      limite: APP_CONFIG.NB_ARTICLES_POUR_CARTE_PAYS,
-    });
-    echantillon = bruts.map(normaliserArticle);
+    await avecConcurrenceLimitee(echantillon, async (a) => {
+      a.auteurs = await fetchAuteurs(a.id);
+      a.pays = [...new Set(a.auteurs.map(au=>au.pays).filter(Boolean))];
+      traites++;
+      if (traites % 200 === 0) toast(`Chargement de la carte… ${traites}/${echantillon.length} articles`, 1200);
+    }, APP_CONFIG.CONCURRENCE_AUTEURS_CARTE);
   } catch(err) {
     console.error(err);
-    toast('Erreur pendant le chargement de l\'échantillon pays');
+    toast('Erreur pendant le chargement des pays (auteurs)');
   }
 
   countryMap = {};
@@ -618,8 +657,8 @@ function renderEvoChart(){
 
   const note=document.getElementById('evoNote');
   if(note) note.textContent=hasData
-    ?`Score = fréquence cumulée du mot (et des expressions qui le contiennent) dans les articles`
-    :"Ce mot n'apparaît pas dans les données. Essayez un synonyme.";
+    ?`Score = fréquence cumulée du mot (et des expressions qui le contiennent) dans les articles chargés du mois`
+    :"Ce mot n'apparaît pas dans les données chargées. Essayez un synonyme.";
 }
 
 function renderEvoSuggestions(){
@@ -634,26 +673,23 @@ function renderEvoSuggestions(){
 function renderMultiEvo(){ /* single page — removed */ }
 
 /* ══ ARTICLES ═══════════════════════════════════════════════════════════ */
-
-/** Recherche/filtre fait côté serveur (mot-clé -> table `mot_articles`
- *  indexée, mois -> filtre SQL) au lieu de filtrer un tableau de 500 000
- *  articles en mémoire. Auteurs déjà embarqués dans la réponse. */
 async function renderTopArticles(keyword){
   const sub = document.getElementById('articlesSub');
   if(sub) sub.textContent = 'Recherche des articles…';
 
-  let arts = [];
-  try {
-    const bruts = await fetchArticlesRecherche({
-      mot: keyword || '',
-      mois: ACTIVE_MONTH || '',
-      limite: 20,
-    });
-    arts = bruts.map(normaliserArticle);
-  } catch(err) {
-    console.error(err);
-    toast('Erreur pendant la recherche d\'articles');
+  let arts = ACTIVE_MONTH ? ARTICLES.filter(a=>a.mois===ACTIVE_MONTH) : ARTICLES;
+  if(keyword){
+    const kw = keyword.toLowerCase();
+    arts = arts.filter(a => (kw in a._kw) || (a.titre||'').toLowerCase().includes(kw));
   }
+  arts = [...arts].sort((a,b)=>b.citations-a.citations).slice(0,20);
+
+  try {
+    await avecConcurrenceLimitee(arts.filter(a=>a.auteurs===null), async (a) => {
+      a.auteurs = await fetchAuteurs(a.id);
+      a.pays = [...new Set(a.auteurs.map(au=>au.pays).filter(Boolean))];
+    }, 6);
+  } catch(err) { console.error(err); }
 
   CURRENT_ARTICLES = arts;
   updateArticlesHeader(keyword, arts.length);
@@ -679,7 +715,7 @@ function displayArticles(arts, keyword){
     container.innerHTML=
       `<div style="padding:2rem;text-align:center;color:var(--text-3);font-size:14px;">
         <div style="font-size:32px;opacity:.35;margin-bottom:10px;">🔍</div>
-        Aucun article trouvé${keyword ? ` pour <strong>"${keyword}"</strong>` : ''} dans les données.
+        Aucun article trouvé${keyword ? ` pour <strong>"${keyword}"</strong>` : ''} dans les données chargées.
         <div style="margin-top:8px;font-size:12px;">Essayez un autre mot du nuage.</div>
       </div>`;
     return;
@@ -756,17 +792,20 @@ async function initApp() {
   await chargerReferentiel();
 
   try {
-    const agregats = await fetchAgregatsNuage();
-    MONTHLY_KW = agregats.par_mois || {};
-    GLOBAL_KW  = agregats.global || {};
-    MONTH_ORDER = Object.keys(MONTHLY_KW).sort();
-    DERIVED_STATS.total_articles  = agregats.total_articles  || 0;
-    DERIVED_STATS.total_citations = agregats.total_citations || 0;
-    DERIVED_STATS.total_mois      = MONTH_ORDER.length;
+    const bruts = await fetchTousLesArticles((n, total) => {
+      toast(`Chargement des articles… ${n}/${total}`, 1500);
+    });
+    ARTICLES = bruts.map(normaliserArticle);
   } catch(e) {
-    console.error('Erreur lors du chargement des agrégats', e);
+    console.error('Erreur lors du chargement des articles', e);
+    ARTICLES = [];
     toast('⚠ API indisponible — vérifie que le backend Flask est démarré');
   }
+
+  construireAgregats();
+  DERIVED_STATS.total_articles  = ARTICLES.length;
+  DERIVED_STATS.total_citations = ARTICLES.reduce((s,a)=>s+(a.citations||0),0);
+  DERIVED_STATS.total_mois      = MONTH_ORDER.length;
 
   ACTIVE_MONTH = '';
   initMonthPills();
