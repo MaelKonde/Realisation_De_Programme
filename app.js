@@ -9,23 +9,20 @@ Description : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
                 - le nuage de mots (par mois + global) vient précalculé de
                   /agregats/nuage ;
                 - la carte du monde par pays vient précalculée de
-                  /agregats/carte, calculée sur L'INTÉGRALITÉ du corpus
-                  (et non plus un échantillon des articles les plus cités —
-                  voir l'historique ci-dessous) ;
+                  /agregats/carte, calculée sur L'INTÉGRALITÉ du corpus, à
+                  la fois globalement ET par mois (voir CARTE_DATA /
+                  appliquerCarteMois ci-dessous) ;
                 - la liste d'articles affichée (top cités, résultats de
                   recherche) vient de /articles/recherche, qui embarque déjà
                   les auteurs (plus d'appel séparé par article).
               Les trois routes s'appuient sur des tables précalculées une
               fois par precompute.py côté serveur.
 
-              Historique : la carte a d'abord été construite à partir d'un
-              échantillon des N articles les plus cités (biais constaté :
-              un mot très présent dans des articles peu cités, comme
-              "galaxy" ou "learning", pouvait être sous-représenté sur la
-              carte alors qu'il apparaissait fort dans le nuage de mots/la
-              frise d'évolution, qui portent eux sur tout le corpus). La
-              carte est désormais précalculée sur tous les articles ayant
-              au moins un pays identifié, ce qui élimine ce biais.
+              La carte réagit maintenant au changement de mois (setMonth) :
+              /agregats/carte est chargée UNE SEULE FOIS au démarrage et
+              contient déjà la répartition par pays pour chaque mois, donc
+              changer de mois ne déclenche aucun nouvel appel réseau — juste
+              une bascule locale + une transition D3 sur les bulles.
 Usage...... : Charger après data.js et config.js
 Auteur .....: Script généré par claude.ia
 */
@@ -95,8 +92,8 @@ async function fetchAgregatsNuage() {
   return r.json();
 }
 
-/** Répartition par pays précalculée sur TOUT le corpus (plus un
- *  échantillon des articles les plus cités). */
+/** Répartition par pays précalculée sur TOUT le corpus, globale ET par
+ *  mois — chargée une seule fois, voir CARTE_DATA. */
 async function fetchAgregatsCarte() {
   const r = await fetch(`${API}/agregats/carte`);
   if (!r.ok) throw new Error(`API ${r.status} sur /agregats/carte`);
@@ -121,13 +118,22 @@ async function fetchArticlesRecherche({ mot = '', q = '', mois = '', limite = 20
 let MONTHLY_KW       = {}; // { "2025-03": {mot:poids}, ... } — précalculé côté serveur
 let GLOBAL_KW        = {}; // agrégat tous mois confondus — précalculé côté serveur
 let MONTH_ORDER      = [];
-let countryMap       = {}; // { code: {total, mots:[{mot,poids}]} } — précalculé, TOUT le corpus
+let countryMap       = {}; // vue COURANTE (dérivée de CARTE_DATA selon ACTIVE_MONTH)
+
+/** Données brutes complètes reçues de /agregats/carte : contient déjà tout
+ *  (global + chaque mois), donc changer de mois ne redemande jamais rien
+ *  au serveur — voir appliquerCarteMois(). */
+let CARTE_DATA = {
+  global: { par_pays: {}, total_pays: 0, total_articles_avec_pays: 0 },
+  par_mois: {},
+};
+
 let DERIVED_STATS    = {
   total_articles: 0,
   total_citations: 0,
   total_mois: 0,
   total_pays: null,
-  total_articles_avec_pays: null, // nb d'articles ayant au moins un pays identifié
+  total_articles_avec_pays: null,
 };
 
 let ACTIVE_MONTH     = '';
@@ -222,11 +228,9 @@ function renderStatStrip(){
     .sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
   const totalPaysAffiche = DERIVED_STATS.total_pays===null ? '…' : DERIVED_STATS.total_pays;
 
-  // Note sous le nombre de pays : couverture réelle (tous les articles
-  // ayant un pays identifié), plus un échantillon comme avant.
   const notePays = DERIVED_STATS.total_articles_avec_pays
-    ? `sur ${DERIVED_STATS.total_articles_avec_pays.toLocaleString('fr-FR')} art. avec pays identifié`
-    : 'calcul en cours…';
+    ? `sur ${DERIVED_STATS.total_articles_avec_pays.toLocaleString('fr-FR')} art. avec pays identifié${ACTIVE_MONTH ? ' ce mois' : ''}`
+    : 'aucune donnée pour ce mois';
 
   document.getElementById('statStrip').innerHTML=`
     <div class="stat-card"><div class="stat-label">Articles chargés</div>
@@ -298,16 +302,14 @@ function initMonthPills(){
   });
 }
 
-/** ⚠ setMonth() ne touche pas à la carte (countryMap) : la carte est
- *  précalculée sur l'ensemble du corpus, toutes dates confondues (voir
- *  loadPaysEtCarte). Une évolution possible serait de précalculer aussi une
- *  répartition par pays ET par mois côté serveur, si ce filtrage devient
- *  un besoin réel. */
+/** Change de mois : met à jour le nuage de mots-clés ET la carte des pays
+ *  (les deux sont précalculés, donc c'est instantané — aucun appel réseau
+ *  supplémentaire). */
 function setMonth(m,i){
   ACTIVE_MONTH=m;
   document.querySelectorAll('.m-pill').forEach((b,j)=>b.classList.toggle('active',j===i+1));
   renderCloud(m);
-  renderStatStrip();
+  appliquerCarteMois(m);
   renderTopArticles(EVO_WORD || undefined);
   if(EVO_WORD) renderEvoChart();
 }
@@ -385,9 +387,8 @@ function bulleAssezGrandePourTexte(rBase) {
   return true;
 }
 
-/** Légende sous la carte : précise maintenant que la couverture est
- *  totale (plus un échantillon), avec le nombre d'articles réellement
- *  rattachés à un pays. */
+/** Légende sous la carte : précise la couverture pour la vue courante
+ *  (globale ou filtrée par mois). */
 function updateMapCoverageNote(){
   const container = document.getElementById('mapContainer');
   if(!container) return;
@@ -399,37 +400,53 @@ function updateMapCoverageNote(){
     container.insertAdjacentElement('afterend', note);
   }
   const n = DERIVED_STATS.total_articles_avec_pays;
+  const suffixe = ACTIVE_MONTH ? ` pour ${formatMonthLabel(ACTIVE_MONTH)}` : ' (toutes dates confondues)';
   note.textContent = n
-    ? `Carte basée sur l'intégralité des articles indexés (${n.toLocaleString('fr-FR')} avec au moins un pays identifié).`
-    : '';
+    ? `Carte basée sur l'intégralité des articles indexés${suffixe} (${n.toLocaleString('fr-FR')} avec au moins un pays identifié).`
+    : `Aucun article avec un pays identifié${suffixe}.`;
 }
 
-/** Construit countryMap à partir de la répartition par pays PRÉCALCULÉE
- *  sur tout le corpus (/agregats/carte), et non plus d'un échantillon des
- *  articles les plus cités : évite le biais où un mot fréquent surtout
- *  dans des articles peu cités (ex. "galaxy", "learning") était sous- ou
- *  sur-représenté selon les pays qui publient le plus d'articles très
- *  cités. */
-async function loadPaysEtCarte(){
-  try {
-    const data = await fetchAgregatsCarte();
-    countryMap = data.par_pays || {};
-    DERIVED_STATS.total_pays = data.total_pays || Object.keys(countryMap).length;
-    DERIVED_STATS.total_articles_avec_pays = data.total_articles_avec_pays || 0;
-  } catch(err) {
-    console.error(err);
-    toast('Erreur pendant le chargement de la carte des pays');
-    countryMap = {};
-    DERIVED_STATS.total_pays = 0;
-  }
+/** Bascule countryMap sur la vue globale ou sur un mois précis, à partir
+ *  des données déjà chargées dans CARTE_DATA (aucun appel réseau). Met à
+ *  jour les stats, la légende, les bulles de la carte (avec transition
+ *  D3 fluide si la carte est déjà affichée), et rafraîchit le panneau
+ *  latéral du pays actif s'il existe encore dans la nouvelle vue. */
+function appliquerCarteMois(mois){
+  const bloc = mois
+    ? (CARTE_DATA.par_mois[mois] || { par_pays: {}, total_pays: 0, total_articles_avec_pays: 0 })
+    : CARTE_DATA.global;
+
+  countryMap = bloc.par_pays || {};
+  DERIVED_STATS.total_pays = bloc.total_pays || 0;
+  DERIVED_STATS.total_articles_avec_pays = bloc.total_articles_avec_pays || 0;
 
   renderStatStrip();
   updateMapCoverageNote();
 
-  if(!ACTIVE_COUNTRY){
+  if(mapInitialized) updateMapBubbles();
+
+  // Le pays actif peut ne plus exister dans ce mois (0 article) : on
+  // reporte alors sur le pays le plus représenté de la nouvelle vue.
+  if(!ACTIVE_COUNTRY || !countryMap[ACTIVE_COUNTRY]){
     const premier = Object.entries(countryMap).sort((a,b)=>b[1].total-a[1].total)[0];
-    if(premier) ACTIVE_COUNTRY = premier[0];
+    ACTIVE_COUNTRY = premier ? premier[0] : null;
   }
+  if(ACTIVE_COUNTRY && document.getElementById('sidebarBars')){
+    selectCountry(ACTIVE_COUNTRY);
+  }
+}
+
+/** Charge la répartition par pays (globale + par mois) une seule fois au
+ *  démarrage, puis applique la vue correspondant au mois actif. */
+async function loadPaysEtCarte(){
+  try {
+    CARTE_DATA = await fetchAgregatsCarte();
+  } catch(err) {
+    console.error(err);
+    toast('Erreur pendant le chargement de la carte des pays');
+    CARTE_DATA = { global: { par_pays: {}, total_pays: 0, total_articles_avec_pays: 0 }, par_mois: {} };
+  }
+  appliquerCarteMois(ACTIVE_MONTH);
 }
 
 function renderMap(){
@@ -477,23 +494,12 @@ function renderMap(){
 
   d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world => {
     const countries = topojson.feature(world, world.objects.countries);
-
-    const maxVol = Math.max(...Object.values(countryMap).map(c=>c.total), 1);
-    const colorScale = d3.scaleSequential().domain([0, maxVol]).interpolator(d3.interpolate('#e8dcc8', '#c9963a'));
-
     mapG.selectAll('.country')
       .data(countries.features)
       .join('path')
-      .attr('class', d => {
-        const a2 = NUM_TO_A2[String(d.id)];
-        return 'country' + (a2 && countryMap[a2] ? ' has-data' : '');
-      })
+      .attr('class', 'country')
       .attr('d', mapPath)
-      .attr('fill', d => {
-        const a2 = NUM_TO_A2[String(d.id)];
-        if(!a2 || !countryMap[a2]) return '#e8dcc8';
-        return colorScale(countryMap[a2].total);
-      })
+      .attr('fill', '#e8dcc8')
       .attr('stroke','#c0aa88').attr('stroke-width',.3)
       .on('click', (event, d) => {
         const a2 = NUM_TO_A2[String(d.id)];
@@ -511,7 +517,7 @@ function renderMap(){
       .datum(topojson.mesh(world, world.objects.countries, (a,b)=>a!==b))
       .attr('d', mapPath).attr('fill','none').attr('stroke','rgba(255,255,255,.55)').attr('stroke-width',.4);
 
-    updateMapBubbles();
+    updateMapBubbles(); // colore les pays + place les bulles selon countryMap déjà chargé
   }).catch(err => {
     console.error('Erreur chargement carte:', err);
     const t=document.getElementById('sidebarTitle');
@@ -519,11 +525,28 @@ function renderMap(){
   });
 }
 
+/** Recolore les pays + repositionne les bulles selon countryMap COURANT
+ *  (rappelée à chaque changement de mois, avec transition D3 fluide sur
+ *  le rayon des bulles pour un rendu "site pro" plutôt qu'un rafraîchissement
+ *  brutal). */
 function updateMapBubbles(){
   if(!mapG) return;
-  mapG.selectAll('.bubble-group').remove();
 
   const maxVol = Math.max(...Object.values(countryMap).map(c=>c.total), 1);
+  const colorScale = d3.scaleSequential().domain([0, maxVol]).interpolator(d3.interpolate('#e8dcc8', '#c9963a'));
+
+  // Recolore chaque pays selon les données du mois/de la vue active.
+  mapG.selectAll('.country')
+    .classed('has-data', d => {
+      const a2 = NUM_TO_A2[String(d.id)];
+      return !!(a2 && countryMap[a2]);
+    })
+    .transition().duration(400)
+    .attr('fill', d => {
+      const a2 = NUM_TO_A2[String(d.id)];
+      if(!a2 || !countryMap[a2]) return '#e8dcc8';
+      return colorScale(countryMap[a2].total);
+    });
 
   const bubbleData = Object.entries(CENTROIDS)
     .filter(([code]) => countryMap[code])
@@ -535,26 +558,43 @@ function updateMapBubbles(){
 
   const groups = mapG.selectAll('.bubble-group')
     .data(bubbleData, d=>d.code)
-    .join('g')
-    .attr('class','bubble-group')
-    .style('cursor','pointer');
-
-  groups.append('circle')
-    .attr('class','bubble')
-    .attr('cx', d => d.xy[0]).attr('cy', d => d.xy[1])
-    .attr('r', 0)
-    .attr('fill', d => d.code===ACTIVE_COUNTRY ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)')
-    .attr('stroke','rgba(255,255,255,.7)').attr('stroke-width',1.2)
-    .transition().duration(600).ease(d3.easeCubicOut)
-    .attr('r', d => d.rBase);
-
-  groups.append('text')
-    .attr('class','bubble-label')
-    .attr('x', d=>d.xy[0]).attr('y', d=>d.xy[1])
-    .text(d => bulleAssezGrandePourTexte(d.rBase) ? d.code : '')   // état initial (zoom = x1)
-    .style('font-size', d => tailleFontePourBulle(d.rBase) + 'px')
-    .attr('fill','#fff').attr('text-anchor','middle').attr('dominant-baseline','central')
-    .attr('pointer-events','none');
+    .join(
+      enter => {
+        const g = enter.append('g').attr('class','bubble-group').style('cursor','pointer');
+        g.append('circle')
+          .attr('class','bubble')
+          .attr('cx', d => d.xy[0]).attr('cy', d => d.xy[1])
+          .attr('r', 0)
+          .attr('fill', d => d.code===ACTIVE_COUNTRY ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)')
+          .attr('stroke','rgba(255,255,255,.7)').attr('stroke-width',1.2)
+          .transition().duration(500).ease(d3.easeCubicOut)
+          .attr('r', d => d.rBase);
+        g.append('text')
+          .attr('class','bubble-label')
+          .attr('x', d=>d.xy[0]).attr('y', d=>d.xy[1])
+          .text(d => bulleAssezGrandePourTexte(d.rBase) ? d.code : '')
+          .style('font-size', d => tailleFontePourBulle(d.rBase) + 'px')
+          .attr('fill','#fff').attr('text-anchor','middle').attr('dominant-baseline','central')
+          .attr('pointer-events','none');
+        return g;
+      },
+      update => {
+        // Mois différent : la bulle existe déjà -> anime sa taille au lieu
+        // de la recréer (transition fluide au changement de mois).
+        update.select('.bubble')
+          .transition().duration(500).ease(d3.easeCubicOut)
+          .attr('r', d => d.rBase);
+        update.select('.bubble-label')
+          .transition().duration(500)
+          .style('font-size', d => tailleFontePourBulle(d.rBase) + 'px');
+        return update;
+      },
+      exit => exit
+        .select('.bubble')
+        .transition().duration(300)
+        .attr('r', 0)
+        .on('end', function(){ d3.select(this.parentNode).remove(); })
+    );
 
   groups
     .on('mouseover', (event, d) => showMapTooltip(event, d.code))
@@ -597,12 +637,12 @@ function selectCountry(code, event){
   if(titre) titre.textContent = `${info.flag} ${info.label}`;
   const barres=document.getElementById('sidebarBars');
   if(barres){
-    barres.innerHTML = sorted.map(({mot:w,poids:v})=>`
+    barres.innerHTML = sorted.length ? sorted.map(({mot:w,poids:v})=>`
       <div class="bar-row">
         <span class="bar-label" title="${w}">${w}</span>
         <div class="bar-track"><div class="bar-fill" style="background:var(--teal)" data-w="${Math.round(v/maxV*100)}"></div></div>
         <span class="bar-count">${Math.round(v)}</span>
-      </div>`).join('');
+      </div>`).join('') : `<p style="color:var(--text-3);font-size:13px;">Aucune donnée pour ce mois.</p>`;
     animBars();
   }
 
@@ -610,7 +650,7 @@ function selectCountry(code, event){
     mapG.selectAll('.bubble').attr('fill', d => d.code===code ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)');
     mapG.selectAll('.country').classed('active', d => NUM_TO_A2[String(d.id)]===code);
   }
-  toast(`${info.flag} ${info.label} — ${sorted.length} mots-clés`);
+  if(event) toast(`${info.flag} ${info.label} — ${sorted.length} mots-clés`);
 }
 
 function resetMapZoom(){
@@ -819,7 +859,7 @@ async function initApp() {
   renderStatStrip();
   renderEvoSuggestions();
   await renderTopArticles();
-  await loadPaysEtCarte();       // carte précalculée sur tout le corpus (/agregats/carte)
+  await loadPaysEtCarte();       // charge global + par_mois une seule fois
   setTimeout(renderMap, 100);
 }
 initApp();
