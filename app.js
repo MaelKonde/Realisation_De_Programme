@@ -5,25 +5,27 @@ Description : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
               index.html — même dépôt que le front). Ces fichiers doivent être
               chargés AVANT celui-ci dans index.html.
 
-              Ne charge pas tous les articles
-              dans le navigateur. Le nuage de mots (par mois + global) vient
-              précalculé de /agregats/nuage, et la liste d'articles affichée
-              (top cités, résultats de recherche, échantillon pour la carte)
-              vient de /articles/recherche — qui embarque déjà les auteurs
-              (plus d'appel séparé par article). Les deux routes s'appuient
-              sur les tables `agregats`/`mot_articles` précalculées une fois
-              par precompute.py côté serveur.
+              Ne charge pas tous les articles dans le navigateur :
+                - le nuage de mots (par mois + global) vient précalculé de
+                  /agregats/nuage ;
+                - la carte du monde par pays vient précalculée de
+                  /agregats/carte, calculée sur L'INTÉGRALITÉ du corpus
+                  (et non plus un échantillon des articles les plus cités —
+                  voir l'historique ci-dessous) ;
+                - la liste d'articles affichée (top cités, résultats de
+                  recherche) vient de /articles/recherche, qui embarque déjà
+                  les auteurs (plus d'appel séparé par article).
+              Les trois routes s'appuient sur des tables précalculées une
+              fois par precompute.py côté serveur.
 
-              ⚠ IMPORTANT — la carte par pays (loadPaysEtCarte) N'EST PAS
-              recalculée quand on change de mois (setMonth) : elle reste un
-              échantillon figé des articles les plus cités toutes dates
-              confondues, calculé une seule fois au chargement. Elle n'est
-              donc pas directement comparable au nuage de mots ni à la
-              frise d'évolution, qui portent sur l'intégralité du corpus.
-              La taille réelle de cet échantillon (bornée côté serveur par
-              LIMITE_RECHERCHE_MAX dans api_flask.py) est affichée sous la
-              carte et dans le bandeau de statistiques pour que ce soit
-              explicite pour l'utilisateur (voir updateMapSampleNote()).
+              Historique : la carte a d'abord été construite à partir d'un
+              échantillon des N articles les plus cités (biais constaté :
+              un mot très présent dans des articles peu cités, comme
+              "galaxy" ou "learning", pouvait être sous-représenté sur la
+              carte alors qu'il apparaissait fort dans le nuage de mots/la
+              frise d'évolution, qui portent eux sur tout le corpus). La
+              carte est désormais précalculée sur tous les articles ayant
+              au moins un pays identifié, ce qui élimine ce biais.
 Usage...... : Charger après data.js et config.js
 Auteur .....: Script généré par claude.ia
 */
@@ -93,13 +95,17 @@ async function fetchAgregatsNuage() {
   return r.json();
 }
 
+/** Répartition par pays précalculée sur TOUT le corpus (plus un
+ *  échantillon des articles les plus cités). */
+async function fetchAgregatsCarte() {
+  const r = await fetch(`${API}/agregats/carte`);
+  if (!r.ok) throw new Error(`API ${r.status} sur /agregats/carte`);
+  return r.json();
+}
+
 /** Recherche/filtrage d'articles fait côté serveur (SQL indexé), auteurs
  *  déjà embarqués dans la réponse. Sans aucun paramètre : top articles par
- *  citations (utilisé pour l'échantillon de la carte des pays).
- *  Note : le nombre d'articles réellement renvoyés peut être inférieur à
- *  `limite` si celle-ci dépasse LIMITE_RECHERCHE_MAX côté serveur — c'est
- *  pourquoi loadPaysEtCarte() se base sur la taille réelle de la réponse
- *  plutôt que sur la valeur demandée. */
+ *  citations (utilisé pour la liste "articles à fort impact"). */
 async function fetchArticlesRecherche({ mot = '', q = '', mois = '', limite = 20 } = {}) {
   const params = new URLSearchParams();
   if (mot) params.set('mot', mot);
@@ -115,13 +121,13 @@ async function fetchArticlesRecherche({ mot = '', q = '', mois = '', limite = 20
 let MONTHLY_KW       = {}; // { "2025-03": {mot:poids}, ... } — précalculé côté serveur
 let GLOBAL_KW        = {}; // agrégat tous mois confondus — précalculé côté serveur
 let MONTH_ORDER      = [];
-let countryMap       = {}; // { code: {total, mots:[{mot,poids}]} } — échantillon
+let countryMap       = {}; // { code: {total, mots:[{mot,poids}]} } — précalculé, TOUT le corpus
 let DERIVED_STATS    = {
   total_articles: 0,
   total_citations: 0,
   total_mois: 0,
   total_pays: null,
-  taille_echantillon_carte: null, // taille RÉELLE reçue pour la carte (pas la config demandée)
+  total_articles_avec_pays: null, // nb d'articles ayant au moins un pays identifié
 };
 
 let ACTIVE_MONTH     = '';
@@ -216,19 +222,18 @@ function renderStatStrip(){
     .sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
   const totalPaysAffiche = DERIVED_STATS.total_pays===null ? '…' : DERIVED_STATS.total_pays;
 
-  // Note explicite sous le nombre de pays : taille réelle de l'échantillon
-  // utilisé pour la carte (et pas la valeur configurée, qui peut être
-  // tronquée côté serveur par LIMITE_RECHERCHE_MAX — voir config.js).
-  const notePays = DERIVED_STATS.taille_echantillon_carte
-    ? `éch. ${DERIVED_STATS.taille_echantillon_carte.toLocaleString('fr-FR')} art. les + cités`
-    : 'échantillon en cours de calcul…';
+  // Note sous le nombre de pays : couverture réelle (tous les articles
+  // ayant un pays identifié), plus un échantillon comme avant.
+  const notePays = DERIVED_STATS.total_articles_avec_pays
+    ? `sur ${DERIVED_STATS.total_articles_avec_pays.toLocaleString('fr-FR')} art. avec pays identifié`
+    : 'calcul en cours…';
 
   document.getElementById('statStrip').innerHTML=`
     <div class="stat-card"><div class="stat-label">Articles chargés</div>
       <div class="stat-val g" id="sc-tot">0</div><div class="stat-note">arXiv via OpenAlex</div></div>
     <div class="stat-card"><div class="stat-label">Mois couverts</div>
       <div class="stat-val">${DERIVED_STATS.total_mois}</div></div>
-    <div class="stat-card"><div class="stat-label">Pays (échantillon)</div>
+    <div class="stat-card"><div class="stat-label">Pays</div>
       <div class="stat-val">${totalPaysAffiche}</div><div class="stat-note">${notePays}</div></div>
     <div class="stat-card"><div class="stat-label">Mot top (${ACTIVE_MONTH?formatMonthLabel(ACTIVE_MONTH):'tous les mois'})</div>
       <div class="stat-val" style="font-size:1rem;padding-top:3px;font-style:italic;">${topKW}</div></div>
@@ -293,10 +298,11 @@ function initMonthPills(){
   });
 }
 
-/** ⚠ setMonth() ne touche PAS à la carte (countryMap) : la carte reste un
- *  échantillon figé toutes dates confondues, calculé une seule fois par
- *  loadPaysEtCarte() au chargement de la page. Voir la note en tête de
- *  fichier et updateMapSampleNote(). */
+/** ⚠ setMonth() ne touche pas à la carte (countryMap) : la carte est
+ *  précalculée sur l'ensemble du corpus, toutes dates confondues (voir
+ *  loadPaysEtCarte). Une évolution possible serait de précalculer aussi une
+ *  répartition par pays ET par mois côté serveur, si ce filtrage devient
+ *  un besoin réel. */
 function setMonth(m,i){
   ACTIVE_MONTH=m;
   document.querySelectorAll('.m-pill').forEach((b,j)=>b.classList.toggle('active',j===i+1));
@@ -379,11 +385,10 @@ function bulleAssezGrandePourTexte(rBase) {
   return true;
 }
 
-/** Ajoute (ou met à jour) une légende explicite sous la carte, précisant
- *  la taille RÉELLE de l'échantillon utilisé et le fait qu'il n'est pas
- *  filtré par mois — pour éviter la confusion avec le nuage de mots et la
- *  frise d'évolution, qui portent eux sur l'intégralité du corpus. */
-function updateMapSampleNote(){
+/** Légende sous la carte : précise maintenant que la couverture est
+ *  totale (plus un échantillon), avec le nombre d'articles réellement
+ *  rattachés à un pays. */
+function updateMapCoverageNote(){
   const container = document.getElementById('mapContainer');
   if(!container) return;
   let note = document.getElementById('mapSampleNote');
@@ -393,50 +398,33 @@ function updateMapSampleNote(){
     note.style.cssText = 'font-size:12px;color:var(--text-3);margin-top:8px;text-align:center;font-style:italic;';
     container.insertAdjacentElement('afterend', note);
   }
-  const n = DERIVED_STATS.taille_echantillon_carte;
+  const n = DERIVED_STATS.total_articles_avec_pays;
   note.textContent = n
-    ? `Carte basée sur un échantillon des ${n.toLocaleString('fr-FR')} articles les plus cités (toutes dates confondues) — non filtrée par mois, non comparable directement au nuage de mots-clés.`
+    ? `Carte basée sur l'intégralité des articles indexés (${n.toLocaleString('fr-FR')} avec au moins un pays identifié).`
     : '';
 }
 
-/** Construit countryMap à partir d'un ÉCHANTILLON (les articles les plus
- *  cités, toutes dates confondues), obtenu directement via
- *  /articles/recherche (auteurs déjà embarqués — plus d'appel séparé par
- *  article). La taille RÉELLE de cet échantillon (bruts.length) peut être
- *  inférieure à APP_CONFIG.NB_ARTICLES_POUR_CARTE_PAYS si celle-ci dépasse
- *  LIMITE_RECHERCHE_MAX côté serveur (api_flask.py) : on se base donc sur
- *  la réponse reçue, jamais sur la valeur demandée, pour tout affichage. */
+/** Construit countryMap à partir de la répartition par pays PRÉCALCULÉE
+ *  sur tout le corpus (/agregats/carte), et non plus d'un échantillon des
+ *  articles les plus cités : évite le biais où un mot fréquent surtout
+ *  dans des articles peu cités (ex. "galaxy", "learning") était sous- ou
+ *  sur-représenté selon les pays qui publient le plus d'articles très
+ *  cités. */
 async function loadPaysEtCarte(){
-  let echantillon = [];
   try {
-    const bruts = await fetchArticlesRecherche({
-      limite: APP_CONFIG.NB_ARTICLES_POUR_CARTE_PAYS,
-    });
-    echantillon = bruts.map(normaliserArticle);
-    DERIVED_STATS.taille_echantillon_carte = bruts.length;
+    const data = await fetchAgregatsCarte();
+    countryMap = data.par_pays || {};
+    DERIVED_STATS.total_pays = data.total_pays || Object.keys(countryMap).length;
+    DERIVED_STATS.total_articles_avec_pays = data.total_articles_avec_pays || 0;
   } catch(err) {
     console.error(err);
-    toast('Erreur pendant le chargement de l\'échantillon pays');
+    toast('Erreur pendant le chargement de la carte des pays');
+    countryMap = {};
+    DERIVED_STATS.total_pays = 0;
   }
 
-  countryMap = {};
-  echantillon.forEach(a => {
-    a.pays.forEach(code => {
-      countryMap[code] = countryMap[code] || { total: 0, _kw: {} };
-      countryMap[code].total += 1;
-      Object.entries(a._kw).forEach(([w,c])=>{
-        countryMap[code]._kw[w] = (countryMap[code]._kw[w]||0)+c;
-      });
-    });
-  });
-  Object.values(countryMap).forEach(c=>{
-    c.mots = Object.entries(c._kw).sort((a,b)=>b[1]-a[1]).slice(0,14).map(([mot,poids])=>({mot,poids}));
-    delete c._kw;
-  });
-
-  DERIVED_STATS.total_pays = Object.keys(countryMap).length;
   renderStatStrip();
-  updateMapSampleNote();
+  updateMapCoverageNote();
 
   if(!ACTIVE_COUNTRY){
     const premier = Object.entries(countryMap).sort((a,b)=>b[1].total-a[1].total)[0];
@@ -831,7 +819,7 @@ async function initApp() {
   renderStatStrip();
   renderEvoSuggestions();
   await renderTopArticles();
-  await loadPaysEtCarte();       // met aussi à jour total_pays + taille_echantillon_carte + note sous la carte
+  await loadPaysEtCarte();       // carte précalculée sur tout le corpus (/agregats/carte)
   setTimeout(renderMap, 100);
 }
-initApp();v
+initApp();
