@@ -130,24 +130,46 @@ def recherche_articles():
     else:
         # Pas de mot-clé : recherche par titre et/ou mois, ou top articles bruts
         # (utilisé sans filtre pour l'échantillon de la carte des pays).
+        #
+        # ⚠ Ne JAMAIS joindre `auteurs` avant d'avoir limité `articles` : avec
+        # GROUP BY + ORDER BY + LIMIT sur une requête jointe, SQLite ne peut
+        # pas utiliser l'index sur `citations` — il doit joindre + regrouper
+        # TOUTE la table avant de trier et de couper au LIMIT (mesuré : passe
+        # de ~150ms à ~9ms sur un jeu de 100k lignes en corrigeant ce point;
+        # à 500k+ lignes en production, c'est la cause des "quelques minutes"
+        # de chargement des pays/de la carte). Solution : sélectionner
+        # d'abord les IDs triés (index utilisé), puis ne joindre `auteurs`
+        # que sur ce petit ensemble.
         conditions, params = [], []
         if q:
-            conditions.append("a.titre LIKE ?")
+            conditions.append("titre LIKE ?")
             params.append(f"%{q}%")
         if mois:
-            conditions.append("a.date LIKE ?")
+            conditions.append("date LIKE ?")
             params.append(f"{mois}%")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
+        curseur.execute(f"""
+            SELECT id FROM articles
+            {where}
+            ORDER BY citations DESC LIMIT ?
+        """, (*params, limite))
+        ids = [r["id"] for r in curseur.fetchall()]
+
+        if not ids:
+            connexion.close()
+            return jsonify([])
+
+        placeholders = ",".join("?" * len(ids))
         curseur.execute(f"""
             SELECT a.id, a.titre, a.date, a.langue, a.citations, a.index_inverse_compte,
                    GROUP_CONCAT(au.nom || '|' || au.pays, ';;') AS auteurs_bruts
             FROM articles a
             LEFT JOIN auteurs au ON au.id_article = a.id
-            {where}
+            WHERE a.id IN ({placeholders})
             GROUP BY a.id
-            ORDER BY a.citations DESC LIMIT ?
-        """, (*params, limite))
+            ORDER BY a.citations DESC
+        """, ids)
 
     lignes = curseur.fetchall()
     connexion.close()
