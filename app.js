@@ -672,7 +672,12 @@ function selectCountry(code, event){
     mapG.selectAll('.bubble').attr('fill', d => d.code===code ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)');
     mapG.selectAll('.country').classed('active', d => NUM_TO_A2[String(d.id)]===code);
   }
-  if(event) toast(`${info.flag} ${info.label} — ${sorted.length} mots-clés`);
+  // FIX : toast() affiche le message en texte brut (textContent), pas en
+  // HTML. info.flag contient désormais une balise <img> (voir
+  // getFlagImgHtml() dans data.js) et non plus un simple emoji — l'inclure
+  // ici affichait le tag <img ...> tel quel dans le toast. On garde donc
+  // uniquement le nom du pays, sans le drapeau, pour ce message transitoire.
+  if(event) toast(`${info.label} — ${sorted.length} mots-clés`);
 }
 
 function resetMapZoom(){
