@@ -1,5 +1,5 @@
 /*
-Nom........ : i18n.js
+Nom........ : translateSystem.js
 Description : Système de traduction FR/EN du front-end "Veille Scientifique".
               Principe volontairement simple (pas de framework i18n) :
                 - LANG est déterminée une fois au chargement de la page
