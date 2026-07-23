@@ -6,6 +6,7 @@ Description : API Flask pour "Tendances Scientifiques" (nuage de mots par mois,
 Usage : python3 api_flask.py
 """
 
+import os
 import sqlite3
 
 from flask import Flask, jsonify, request
@@ -20,9 +21,15 @@ CORS(application)
 # /agregats/carte, précalculée sur tout le corpus par precompute.py).
 LIMITE_RECHERCHE_MAX = 47000
 
+# Même variable DB_DIR que download_db.py, pour lire bdd.db au même endroit
+# (le disque persistant Render monté au runtime — voir render.yaml). En
+# local (pas de disque monté), retombe sur le dossier courant.
+DB_DIR = os.environ.get("DB_DIR", ".")
+DB_PATH = os.path.join(DB_DIR, "bdd.db")
+
 
 def connecter_bdd():
-    connexion = sqlite3.connect("bdd.db")
+    connexion = sqlite3.connect(DB_PATH)
     connexion.row_factory = sqlite3.Row
     return connexion
 
