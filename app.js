@@ -208,8 +208,14 @@ const revObs=new IntersectionObserver(entries=>{
     e.target.classList.add('visible');revObs.unobserve(e.target);}});
 },{threshold:.07});
 
+// FIX : passé en innerHTML (au lieu de textContent) pour pouvoir afficher
+// des balises <img> (ex. info.flag, voir getFlagImgHtml() dans data.js) en
+// plus du texte brut. Sans risque ici : tous les appels à toast() dans ce
+// fichier utilisent des chaînes construites en interne (labels de pays,
+// mots-clés du référentiel, messages fixes), jamais de contenu HTML saisi
+// librement par un tiers.
 function toast(msg,d=2400){const t=document.getElementById('toast');
-  t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),d);}
+  t.innerHTML=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),d);}
 function showToast(msg,d){toast(msg,d);}
 
 function animCount(el,v,d=650){if(!el)return;const s=performance.now();
@@ -672,12 +678,7 @@ function selectCountry(code, event){
     mapG.selectAll('.bubble').attr('fill', d => d.code===code ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)');
     mapG.selectAll('.country').classed('active', d => NUM_TO_A2[String(d.id)]===code);
   }
-  // FIX : toast() affiche le message en texte brut (textContent), pas en
-  // HTML. info.flag contient désormais une balise <img> (voir
-  // getFlagImgHtml() dans data.js) et non plus un simple emoji — l'inclure
-  // ici affichait le tag <img ...> tel quel dans le toast. On garde donc
-  // uniquement le nom du pays, sans le drapeau, pour ce message transitoire.
-  if(event) toast(`${info.label} — ${sorted.length} mots-clés`);
+  if(event) toast(`${info.flag} ${info.label} — ${sorted.length} mots-clés`);
 }
 
 function resetMapZoom(){
