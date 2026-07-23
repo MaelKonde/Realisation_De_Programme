@@ -168,6 +168,15 @@ header.scrolled {
   color: var(--text-3);
   cursor: pointer;
   transition: background .15s, color .15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lang-btn img {
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.08);
+  flex-shrink: 0;
 }
 
 .lang-btn:hover {
