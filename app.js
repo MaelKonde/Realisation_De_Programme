@@ -208,12 +208,6 @@ const revObs=new IntersectionObserver(entries=>{
     e.target.classList.add('visible');revObs.unobserve(e.target);}});
 },{threshold:.07});
 
-// FIX : passé en innerHTML (au lieu de textContent) pour pouvoir afficher
-// des balises <img> (ex. info.flag, voir getFlagImgHtml() dans data.js) en
-// plus du texte brut. Sans risque ici : tous les appels à toast() dans ce
-// fichier utilisent des chaînes construites en interne (labels de pays,
-// mots-clés du référentiel, messages fixes), jamais de contenu HTML saisi
-// librement par un tiers.
 function toast(msg,d=2400){const t=document.getElementById('toast');
   t.innerHTML=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),d);}
 function showToast(msg,d){toast(msg,d);}
@@ -236,8 +230,8 @@ function renderStatStrip(){
   const totalPaysAffiche = DERIVED_STATS.total_pays===null ? '…' : DERIVED_STATS.total_pays;
 
   const notePays = DERIVED_STATS.total_articles_avec_pays
-    ? `sur ${DERIVED_STATS.total_articles_avec_pays.toLocaleString('fr-FR')} art. avec pays identifié${ACTIVE_MONTH ? ' ce mois' : ''}`
-    : 'aucune donnée pour ce mois';
+    ? t('stat_countries_note_with', DERIVED_STATS.total_articles_avec_pays, !!ACTIVE_MONTH)
+    : t('stat_countries_note_empty');
 
   // Nombre d'articles affiché : celui du mois sélectionné (précalculé côté
   // serveur), ou le total global si "Tous les mois" est actif. Auparavant
@@ -246,16 +240,16 @@ function renderStatStrip(){
   const articlesAffiches = ACTIVE_MONTH
     ? (ARTICLES_PAR_MOIS[ACTIVE_MONTH] || 0)
     : DERIVED_STATS.total_articles;
-  const noteArticles = ACTIVE_MONTH ? formatMonthLabel(ACTIVE_MONTH) : 'arXiv via OpenAlex';
+  const noteArticles = ACTIVE_MONTH ? formatMonthLabel(ACTIVE_MONTH) : t('stat_articles_note');
 
   document.getElementById('statStrip').innerHTML=`
-    <div class="stat-card"><div class="stat-label">Articles chargés</div>
+    <div class="stat-card"><div class="stat-label">${t('stat_articles_label')}</div>
       <div class="stat-val g" id="sc-tot">0</div><div class="stat-note">${noteArticles}</div></div>
-    <div class="stat-card"><div class="stat-label">Mois couverts</div>
+    <div class="stat-card"><div class="stat-label">${t('stat_months_label')}</div>
       <div class="stat-val">${DERIVED_STATS.total_mois}</div></div>
-    <div class="stat-card"><div class="stat-label">Pays</div>
+    <div class="stat-card"><div class="stat-label">${t('stat_countries_label')}</div>
       <div class="stat-val">${totalPaysAffiche}</div><div class="stat-note">${notePays}</div></div>
-    <div class="stat-card"><div class="stat-label">Mot top (${ACTIVE_MONTH?formatMonthLabel(ACTIVE_MONTH):'tous les mois'})</div>
+    <div class="stat-card"><div class="stat-label">${t('stat_top_word_label', ACTIVE_MONTH ? formatMonthLabel(ACTIVE_MONTH) : '')}</div>
       <div class="stat-val" style="font-size:1rem;padding-top:3px;font-style:italic;">${topKW}</div></div>
   `;
   setTimeout(()=>animCount(document.getElementById('sc-tot'),articlesAffiches),80);
@@ -269,7 +263,7 @@ function renderCloud(mois){
   setTimeout(()=>{
     const data = mois ? (MONTHLY_KW[mois]||{}) : GLOBAL_KW;
     const sorted=Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,55);
-    if(!sorted.length){wrap.innerHTML='<p style="color:var(--text-3);font-size:13px;">Aucune donnée.</p>';wrap.classList.remove('fading');return;}
+    if(!sorted.length){wrap.innerHTML=`<p style="color:var(--text-3);font-size:13px;">${t('cloud_no_data')}</p>`;wrap.classList.remove('fading');return;}
     const maxF=sorted[0][1];
     wrap.innerHTML=sorted.map(([w,f])=>{
       const size=11+Math.round((f/maxF)*20);
@@ -295,7 +289,7 @@ function onCloudClick(word){
     const el=document.getElementById('topArticlesList');
     if(el) el.closest('.section-card').scrollIntoView({behavior:'smooth',block:'start'});
   },200);
-  toast(`Évolution de "${word}" tracée — onglet Évolution`);
+  toast(t('evo_traced_toast', word));
 }
 
 /* ══ Month pills ════════════════════════════════════════════════════════ */
@@ -305,7 +299,7 @@ function initMonthPills(){
   c.innerHTML='';
   const bTous=document.createElement('button');
   bTous.className='m-pill'+(ACTIVE_MONTH===''?' active':'');
-  bTous.textContent='Tous les mois';
+  bTous.textContent=t('mois_tous');
   bTous.onclick=()=>setMonth('',-1);
   c.appendChild(bTous);
 
@@ -416,10 +410,10 @@ function updateMapCoverageNote(){
     container.insertAdjacentElement('afterend', note);
   }
   const n = DERIVED_STATS.total_articles_avec_pays;
-  const suffixe = ACTIVE_MONTH ? ` pour ${formatMonthLabel(ACTIVE_MONTH)}` : ' (toutes dates confondues)';
+  const suffixe = ACTIVE_MONTH ? t('map_coverage_suffix_mois', formatMonthLabel(ACTIVE_MONTH)) : t('map_coverage_suffix_toutes');
   note.textContent = n
-    ? `Carte basée sur l'intégralité des articles indexés${suffixe} (${n.toLocaleString('fr-FR')} avec au moins un pays identifié).`
-    : `Aucun article avec un pays identifié${suffixe}.`;
+    ? t('map_coverage_full', n, suffixe)
+    : t('map_coverage_empty', suffixe);
 }
 
 /** Bascule countryMap sur la vue globale ou sur un mois précis, à partir
@@ -453,9 +447,9 @@ function appliquerCarteMois(mois){
     selectCountry(ACTIVE_COUNTRY);
   } else if(!ACTIVE_COUNTRY){
     const titre=document.getElementById('sidebarTitle');
-    if(titre) titre.textContent = 'Aucune donnée';
+    if(titre) titre.textContent = t('sidebar_aucune_donnee');
     const barres=document.getElementById('sidebarBars');
-    if(barres) barres.innerHTML = `<p style="color:var(--text-3);font-size:13px;">Aucun pays identifié pour cette période.</p>`;
+    if(barres) barres.innerHTML = `<p style="color:var(--text-3);font-size:13px;">${t('sidebar_aucun_pays_periode')}</p>`;
   }
 }
 
@@ -466,7 +460,7 @@ async function loadPaysEtCarte(){
     CARTE_DATA = await fetchAgregatsCarte();
   } catch(err) {
     console.error(err);
-    toast('Erreur pendant le chargement de la carte des pays');
+    toast(t('toast_erreur_carte'));
     CARTE_DATA = { global: { par_pays: {}, total_pays: 0, total_articles_avec_pays: 0 }, par_mois: {} };
   }
   appliquerCarteMois(ACTIVE_MONTH);
@@ -657,11 +651,6 @@ function selectCountry(code, event){
   const maxV = sorted[0]?.poids||1;
 
   const titre=document.getElementById('sidebarTitle');
-  // FIX : `info.flag` contient maintenant du HTML (une balise <img>, voir
-  // getFlagImgHtml() dans data.js) et non plus un simple caractère emoji.
-  // `textContent` affichait donc le tag <img ...> tel quel, en texte brut,
-  // au lieu de rendre le drapeau. On utilise `innerHTML` ici (comme c'est
-  // déjà le cas partout ailleurs : tooltip de la carte, cartes d'articles).
   if(titre) titre.innerHTML = `${info.flag} ${info.label}`;
   const barres=document.getElementById('sidebarBars');
   if(barres){
@@ -670,7 +659,7 @@ function selectCountry(code, event){
         <span class="bar-label" title="${w}">${w}</span>
         <div class="bar-track"><div class="bar-fill" style="background:var(--teal)" data-w="${Math.round(v/maxV*100)}"></div></div>
         <span class="bar-count">${Math.round(v)}</span>
-      </div>`).join('') : `<p style="color:var(--text-3);font-size:13px;">Aucune donnée pour ce mois.</p>`;
+      </div>`).join('') : `<p style="color:var(--text-3);font-size:13px;">${t('sidebar_aucune_donnee_mois')}</p>`;
     animBars();
   }
 
@@ -678,7 +667,7 @@ function selectCountry(code, event){
     mapG.selectAll('.bubble').attr('fill', d => d.code===code ? 'rgba(201,150,58,.9)' : 'rgba(139,58,42,.72)');
     mapG.selectAll('.country').classed('active', d => NUM_TO_A2[String(d.id)]===code);
   }
-  if(event) toast(`${info.flag} ${info.label} — ${sorted.length} mots-clés`);
+  if(event) toast(t('toast_pays_mots', info.flag, info.label, sorted.length));
 }
 
 function resetMapZoom(){
@@ -715,8 +704,8 @@ function renderEvoChart(){
 
   const label=document.getElementById('evoLabel');
   if(label) label.innerHTML=hasData
-    ?`Évolution de <strong style="color:var(--gold)">"${EVO_WORD}"</strong> sur ${MONTH_ORDER.length} mois`
-    :`<span style="color:var(--rust)">Mot "<strong>${EVO_WORD}</strong>" non trouvé dans les données.</span>`;
+    ? t('evo_label_trouve', EVO_WORD, MONTH_ORDER.length)
+    : t('evo_label_non_trouve', EVO_WORD);
 
   const chart=document.getElementById('evoChart');
   if(chart) chart.innerHTML=MONTH_ORDER.map((m,i)=>{
@@ -731,8 +720,8 @@ function renderEvoChart(){
 
   const note=document.getElementById('evoNote');
   if(note) note.textContent=hasData
-    ?`Score = fréquence cumulée du mot (et des expressions qui le contiennent) dans les articles`
-    :"Ce mot n'apparaît pas dans les données. Essayez un synonyme.";
+    ? t('evo_note_score')
+    : t('evo_note_non_trouve');
 }
 
 function renderEvoSuggestions(){
@@ -740,7 +729,7 @@ function renderEvoSuggestions(){
   if(!c) return;
   const top=Object.entries(GLOBAL_KW).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([w])=>w);
   c.innerHTML=
-    `<span style="font-size:12px;color:var(--text-3);margin-right:4px;">Suggestions :</span>`+
+    `<span style="font-size:12px;color:var(--text-3);margin-right:4px;">${t('evo_suggestions_label')}</span>`+
     top.map(w=>`<span class="kw-tag" onclick="traceEvolution('${w.replace(/'/g,"\\'")}')">${w}</span>`).join('');
 }
 
@@ -768,7 +757,7 @@ function resoudreMotsCorrespondants(saisie){
 
 async function renderTopArticles(keyword){
   const sub = document.getElementById('articlesSub');
-  if(sub) sub.textContent = 'Recherche des articles…';
+  if(sub) sub.textContent = t('articles_recherche_en_cours');
 
   let arts = [];
   try {
@@ -794,7 +783,7 @@ async function renderTopArticles(keyword){
     }
   } catch(err) {
     console.error(err);
-    toast('Erreur pendant la recherche d\'articles');
+    toast(t('toast_erreur_recherche'));
   }
 
   CURRENT_ARTICLES = arts;
@@ -806,10 +795,10 @@ function updateArticlesHeader(keyword, count){
   const sub = document.getElementById('articlesSub');
   const btn = document.getElementById('resetArticlesBtn');
   if(keyword){
-    if(sub) sub.innerHTML = `Articles contenant <strong style="color:var(--gold)">"${keyword}"</strong> · ${count} résultat${count!==1?'s':''}`;
+    if(sub) sub.innerHTML = t('articles_header_filtre', keyword, count);
     if(btn) btn.style.display = 'inline-block';
   } else {
-    if(sub) sub.textContent = 'Sélection des articles à fort impact · cliquez sur un mot du nuage pour filtrer';
+    if(sub) sub.textContent = t('articles_sub_defaut');
     if(btn) btn.style.display = 'none';
   }
 }
@@ -821,8 +810,8 @@ function displayArticles(arts, keyword){
     container.innerHTML=
       `<div style="padding:2rem;text-align:center;color:var(--text-3);font-size:14px;">
         <div style="font-size:32px;opacity:.35;margin-bottom:10px;">🔍</div>
-        Aucun article trouvé${keyword ? ` pour <strong>"${keyword}"</strong>` : ''} dans les données.
-        <div style="margin-top:8px;font-size:12px;">Essayez un autre mot du nuage.</div>
+        ${t('articles_aucun_trouve', keyword)}
+        <div style="margin-top:8px;font-size:12px;">${t('articles_essayer_autre')}</div>
       </div>`;
     return;
   }
@@ -837,7 +826,7 @@ function displayArticles(arts, keyword){
       ${auths?`<div class="article-authors">${auths}</div>`:''}
       <div class="meta-row">
         <span class="meta-pill date">📅 ${(a.date||'').slice(0,7)}</span>
-        ${a.citations>0?`<span class="meta-pill cit">⭐ ${a.citations} citations</span>`:''}
+        ${a.citations>0?`<span class="meta-pill cit">⭐ ${a.citations} ${t('citations_mot')}</span>`:''}
         ${pays}
       </div>
       <div class="link-row">
@@ -869,7 +858,7 @@ function resetArticles(){
 
 /* ══ Export CSV ═════════════════════════════════════════════════════════ */
 function exportArticlesCSV(){
-  if(!CURRENT_ARTICLES.length){ showToast('Aucun article à exporter'); return; }
+  if(!CURRENT_ARTICLES.length){ showToast(t('export_aucun')); return; }
   const headers = ['Titre','Date','Auteurs','Pays','Citations','Mots-clés','URL OpenAlex','URL arXiv'];
   const rows = CURRENT_ARTICLES.map(a => [
     `"${(a.titre||'').replace(/"/g,'""')}"`,
@@ -889,12 +878,13 @@ function exportArticlesCSV(){
   el.download = `articles_${EVO_WORD ? EVO_WORD + '_' : ''}${new Date().toISOString().slice(0,10)}.csv`;
   el.click();
   URL.revokeObjectURL(url);
-  showToast(`✓ ${CURRENT_ARTICLES.length} articles exportés en CSV`);
+  showToast(t('export_succes', CURRENT_ARTICLES.length));
 }
 
 /* ══ Init (page unique) ═════════════════════════════════════════════════ */
 async function initApp() {
-  toast('Chargement des données…', 1800);
+  appliquerTraductionsStatiques();
+  toast(t('init_chargement'), 1800);
   await chargerReferentiel();
 
   try {
@@ -908,7 +898,7 @@ async function initApp() {
     DERIVED_STATS.total_mois      = MONTH_ORDER.length;
   } catch(e) {
     console.error('Erreur lors du chargement des agrégats', e);
-    toast('⚠ API indisponible — vérifie que le backend Flask est démarré');
+    toast(t('init_erreur_api'));
   }
 
   ACTIVE_MONTH = '';
