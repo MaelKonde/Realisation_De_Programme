@@ -69,11 +69,18 @@ const CENTROIDS = {
   TV:[179,-8], VU:[167,-16],
 };
 
-/* ============================================================
+/* 
    Noms français des pays (clé = code ISO 3166-1 alpha-2)
    Les drapeaux sont générés automatiquement à partir du code
    ISO via getFlagEmoji(), pour éviter toute erreur de saisie.
-   ============================================================ */
+                                                                */
+
+/* getFlagEmoji() ci-dessus produit un VRAI drapeau (🇫🇷) uniquement si la
+ * police d'emoji du système d'exploitation du visiteur sait dessiner la
+ * paire de caractères Unicode "Regional Indicator Symbol" (U+1F1E6-1F1FF)
+ * comme un drapeau. Le rendu dépend donc de la
+ * machine du VISITEUR, pas du code du site. */
+
 function getFlagEmoji(isoCode) {
   // Cas particuliers sans indicatif ISO standard à 2 lettres classique
   const special = { XK: '🇽🇰' }; // Kosovo (code non officiel ISO mais couramment utilisé)
@@ -85,17 +92,9 @@ function getFlagEmoji(isoCode) {
     );
 }
 
-/* ⚠ getFlagEmoji() ci-dessus produit un VRAI drapeau (🇫🇷) uniquement si la
- * police d'emoji du système d'exploitation du visiteur sait dessiner la
- * paire de caractères Unicode "Regional Indicator Symbol" (U+1F1E6-1F1FF)
- * comme un drapeau. C'est le cas sur iOS/Android/macOS (police emoji
- * couleur complète), mais PAS forcément sur Windows (Microsoft a
- * longtemps affiché les deux lettres du code pays dans des carrés plutôt
- * qu'un drapeau) ni sur Linux (police Noto Emoji sans glyphes de
- * drapeaux, pour des raisons de licence). Le rendu dépend donc de la
- * machine du VISITEUR, pas du code du site.
- *
- * getFlagImgHtml() ci-dessous contourne ce problème en utilisant une
+
+ 
+ /* getFlagImgHtml() ci-dessous contourne ce problème en utilisant une
  * vraie image (flagcdn.com, gratuit, sans clé API) : une image se rend à
  * l'identique sur toutes les plateformes, quelle que soit la police
  * d'emoji installée. */
@@ -176,16 +175,7 @@ const NOMS_PAYS = {
   TO:'Tonga', TV:'Tuvalu', VU:'Vanuatu',
 };
 
-/* Libellés et drapeaux affichés pour les pays (généré à partir de NOMS_PAYS).
- * `flag` contient directement le HTML de l'image (voir getFlagImgHtml) :
- * app.js n'a rien à changer, il interpole déjà `${info.flag}` tel quel
- * dans ses templates (tooltip de la carte, panneau pays, pastilles
- * d'articles) — un <img> s'y insère aussi bien qu'un caractère emoji. */
-
-/* Équivalent anglais de NOMS_PAYS ci-dessus (même 198 codes, vérifié).
- * Généré via pycountry (référentiel ISO 3166), avec quelques corrections
- * manuelles pour un anglais plus naturel (ex. "Russia" plutôt que le nom
- * officiel ISO "Russian Federation"). */
+/* Les noms des pays en anglais */
 const NOMS_PAYS_EN = {
   // --- Amérique du Nord ---
   US:'United States', CA:'Canada', MX:'Mexico', BZ:'Belize',
@@ -254,11 +244,10 @@ const NOMS_PAYS_EN = {
 
 };
 
-/* PAYS_INFO utilise NOMS_PAYS ou NOMS_PAYS_EN selon la langue courante
+/* PAYS_INFO utilise NOMS_PAYS ou NOMS_PAYS_EN selon la langue choisie
  * (LANG est définie par translateSystem.js, chargé avant ce fichier). Le choix de
  * langue ne change qu'au rechargement de la page (voir setLang() dans
- * translateSystem.js), donc PAYS_INFO n'a besoin d'être construit qu'une seule fois
- * ici, avec la bonne langue déjà connue. */
+ * translateSystem.js), donc PAYS_INFO n'a besoin d'être construit qu'une seule fois */
 const NOMS_ACTIFS = (typeof LANG !== 'undefined' && LANG === 'en') ? NOMS_PAYS_EN : NOMS_PAYS;
 const PAYS_INFO = Object.fromEntries(
   Object.entries(NOMS_ACTIFS).map(([code, label]) => [
@@ -267,10 +256,6 @@ const PAYS_INFO = Object.fromEntries(
   ])
 );
 
-// Garde nécessaire pour fonctionner à la fois dans un navigateur (où
-// `module` n'existe pas -- sans cette garde, cette ligne provoquait une
-// erreur "module is not defined" en fin de chargement) et en Node.js
-// (utile pour les tests, cf. les scripts de vérification du projet).
 if (typeof module !== 'undefined') {
   module.exports = { CENTROIDS, PAYS_INFO, getFlagEmoji, getFlagImgHtml };
 }
