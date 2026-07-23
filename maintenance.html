@@ -1,82 +1,248 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Site en maintenance</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site en maintenance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue-deep: #0b2f4d;
+    --blue-mid: #163f61;
+    --grid-line: rgba(255,255,255,0.07);
+    --paper: #f2ede1;
+    --paper-shadow: #d8d0bd;
+    --ink: #1c2b36;
+    --ink-soft: #4a5a63;
+    --amber: #e8a13a;
+    --amber-dark: #b97a1f;
+    --thread: #8f9a9e;
+  }
 
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  *{ margin:0; padding:0; box-sizing:border-box; }
 
-        body {
-            font-family: Arial, Helvetica, sans-serif;
-            background: linear-gradient(135deg, #1e3c72, #2a5298);
-            color: #fff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            text-align: center;
-            padding: 20px;
-        }
+  body{
+    font-family: 'Inter', Arial, sans-serif;
+    background-color: var(--blue-deep);
+    background-image:
+      repeating-linear-gradient(0deg, var(--grid-line) 0 1px, transparent 1px 40px),
+      repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 40px),
+      radial-gradient(ellipse at 30% 20%, var(--blue-mid), var(--blue-deep) 70%);
+    color: var(--ink);
+    min-height: 100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 32px;
+    position: relative;
+    overflow:hidden;
+  }
 
-        .container {
-            max-width: 650px;
-            background: rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 15px 40px rgba(0,0,0,.3);
-        }
+  /* corner crosshairs, drafting-table feel */
+  .crosshair{
+    position:fixed;
+    width:26px; height:26px;
+    opacity:0.35;
+  }
+  .crosshair::before, .crosshair::after{
+    content:"";
+    position:absolute;
+    background: #cfe0ee;
+  }
+  .crosshair::before{ top:50%; left:0; width:100%; height:1px; transform:translateY(-50%); }
+  .crosshair::after{ left:50%; top:0; height:100%; width:1px; transform:translateX(-50%); }
+  .crosshair.tl{ top:24px; left:24px; }
+  .crosshair.tr{ top:24px; right:24px; }
+  .crosshair.bl{ bottom:24px; left:24px; }
+  .crosshair.br{ bottom:24px; right:24px; }
 
-        .icon {
-            font-size: 70px;
-            margin-bottom: 20px;
-        }
+  .stamp{
+    position:fixed;
+    bottom:28px; left:50%;
+    transform: translateX(-50%);
+    font-family:'Space Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    color: rgba(207,224,238,0.4);
+    text-transform: uppercase;
+  }
 
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 20px;
-        }
+  /* the work-order tag */
+  .tag{
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 44px 38px 32px;
+    border-radius: 3px;
+    box-shadow:
+      0 2px 0 var(--paper-shadow),
+      0 25px 50px rgba(0,0,0,0.45);
+    transform: rotate(-1.1deg);
+  }
 
-        p {
-            font-size: 1.1rem;
-            line-height: 1.7;
-            opacity: 0.95;
-        }
+  .tag::before{ /* torn/perforated edge illusion at top */
+    content:"";
+    position:absolute;
+    top:0; left:0; right:0;
+    height: 10px;
+    background: repeating-linear-gradient(90deg, var(--amber) 0 14px, var(--amber-dark) 14px 16px);
+    border-radius: 3px 3px 0 0;
+  }
 
-        .footer {
-            margin-top: 30px;
-            font-size: 0.9rem;
-            opacity: 0.7;
-        }
-    </style>
+  .punch{
+    position:absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-1.1deg);
+    width: 20px; height: 20px;
+    background: var(--blue-deep);
+    border-radius: 50%;
+    border: 3px solid var(--paper);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+  .punch::after{
+    content:"";
+    position:absolute;
+    top:-58px;
+    left:50%;
+    width: 2px;
+    height: 58px;
+    background: var(--thread);
+    transform: translateX(-50%);
+  }
+
+  .eyebrow{
+    font-family:'Space Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--amber-dark);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top: 12px;
+  }
+  .eyebrow .gear{
+    display:inline-block;
+    animation: spin 6s linear infinite;
+    font-size: 1rem;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .eyebrow .gear{ animation: none; }
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  h1{
+    font-family:'Space Mono', monospace;
+    font-size: 1.9rem;
+    line-height: 1.25;
+    margin-top: 14px;
+    letter-spacing: -0.01em;
+  }
+
+  .lede{
+    margin-top: 16px;
+    font-size: 1.02rem;
+    line-height: 1.65;
+    color: var(--ink-soft);
+  }
+
+  .meter{
+    margin-top: 26px;
+    padding-top: 20px;
+    border-top: 1px dashed #b9b0a0;
+  }
+  .meter-label{
+    font-family:'Space Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    display:flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .meter-track{
+    height: 8px;
+    background: #e2dac9;
+    border-radius: 4px;
+    overflow:hidden;
+    border: 1px solid #c9bfa9;
+  }
+  .meter-fill{
+    height:100%;
+    width: 30%;
+    background: linear-gradient(90deg, var(--amber-dark), var(--amber));
+    border-radius: 4px 0 0 4px;
+    animation: work 2.8s ease-in-out infinite alternate;
+  }
+  @media (prefers-reduced-motion: reduce){
+    .meter-fill{ animation: none; width: 62%; }
+  }
+  @keyframes work{
+    0%{ width: 22%; }
+    100%{ width: 68%; }
+  }
+
+  .ticket-footer{
+    margin-top: 28px;
+    display:flex;
+    justify-content: space-between;
+    align-items:flex-end;
+    font-family:'Space Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+    opacity: 0.8;
+  }
+
+  @media (max-width: 480px){
+    .tag{ padding: 38px 24px 26px; }
+    h1{ font-size: 1.5rem; }
+    .crosshair{ display:none; }
+  }
+</style>
 </head>
 <body>
 
-<div class="container">
-    <div class="icon">🛠️</div>
+  <div class="crosshair tl" aria-hidden="true"></div>
+  <div class="crosshair tr" aria-hidden="true"></div>
+  <div class="crosshair bl" aria-hidden="true"></div>
+  <div class="crosshair br" aria-hidden="true"></div>
 
-    <h1>Site en maintenance</h1>
+  <main class="tag" role="main" aria-labelledby="titre-maintenance">
+    <div class="punch" aria-hidden="true"></div>
 
-    <p>
-        Notre site est actuellement en cours de maintenance afin
-        d'améliorer votre expérience.
+    <p class="eyebrow"><span class="gear" aria-hidden="true">⚙</span> Page non accessible</p>
+
+    <h1 id="titre-maintenance">Le site est en maintenance</h1>
+
+    <p class="lede">
+      Notre équipe travaille actuellement sur le site pour en améliorer le fonctionnement.
+      L'accès reprendra dès la fin des réglages, sans action de votre part.
     </p>
 
-    <p style="margin-top:15px;">
-        Nous serons de retour très prochainement.
-        Merci de votre patience et de votre compréhension.
-    </p>
-
-    <div class="footer">
-        © 2026 - Tous droits réservés
+    <div class="meter">
+      <div class="meter-label">
+        <span>Maintenance en cours</span>
+        
+      </div>
+      <div class="meter-track" role="img" aria-label="Travaux de maintenance en cours">
+        <div class="meter-fill"></div>
+      </div>
     </div>
-</div>
+
+    <div class="ticket-footer">
+      <span>veille-scientifique</span>
+      <span>Licence 2 Informatique IED</span>
+    </div>
+  </main>
+
+  <p class="stamp">Merci de votre patience</p>
 
 </body>
 </html>
