@@ -85,6 +85,29 @@ function getFlagEmoji(isoCode) {
     );
 }
 
+/* ⚠ getFlagEmoji() ci-dessus produit un VRAI drapeau (🇫🇷) uniquement si la
+ * police d'emoji du système d'exploitation du visiteur sait dessiner la
+ * paire de caractères Unicode "Regional Indicator Symbol" (U+1F1E6-1F1FF)
+ * comme un drapeau. C'est le cas sur iOS/Android/macOS (police emoji
+ * couleur complète), mais PAS forcément sur Windows (Microsoft a
+ * longtemps affiché les deux lettres du code pays dans des carrés plutôt
+ * qu'un drapeau) ni sur Linux (police Noto Emoji sans glyphes de
+ * drapeaux, pour des raisons de licence). Le rendu dépend donc de la
+ * machine du VISITEUR, pas du code du site.
+ *
+ * getFlagImgHtml() ci-dessous contourne ce problème en utilisant une
+ * vraie image (flagcdn.com, gratuit, sans clé API) : une image se rend à
+ * l'identique sur toutes les plateformes, quelle que soit la police
+ * d'emoji installée. */
+function getFlagImgHtml(isoCode) {
+  const special = { XK: 'xk' }; // Kosovo : flagcdn.com le référence sous 'xk'
+  const code = (special[isoCode] || isoCode).toLowerCase();
+  return `<img src="https://flagcdn.com/16x12/${code}.png" `
+    + `srcset="https://flagcdn.com/32x24/${code}.png 2x" `
+    + `width="16" height="12" alt="${isoCode}" loading="lazy" `
+    + `style="vertical-align:middle;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.08);">`;
+}
+
 const NOMS_PAYS = {
   // --- Amérique du Nord ---
   US:'États-Unis', CA:'Canada', MX:'Mexique',
@@ -153,12 +176,16 @@ const NOMS_PAYS = {
   TO:'Tonga', TV:'Tuvalu', VU:'Vanuatu',
 };
 
-/* Libellés et drapeaux affichés pour les pays (généré à partir de NOMS_PAYS) */
+/* Libellés et drapeaux affichés pour les pays (généré à partir de NOMS_PAYS).
+ * `flag` contient directement le HTML de l'image (voir getFlagImgHtml) :
+ * app.js n'a rien à changer, il interpole déjà `${info.flag}` tel quel
+ * dans ses templates (tooltip de la carte, panneau pays, pastilles
+ * d'articles) — un <img> s'y insère aussi bien qu'un caractère emoji. */
 const PAYS_INFO = Object.fromEntries(
   Object.entries(NOMS_PAYS).map(([code, label]) => [
     code,
-    { label, flag: getFlagEmoji(code) },
+    { label, flag: getFlagImgHtml(code) },
   ])
 );
 
-module.exports = { CENTROIDS, PAYS_INFO, getFlagEmoji };
+module.exports = { CENTROIDS, PAYS_INFO, getFlagEmoji, getFlagImgHtml };
