@@ -4,7 +4,6 @@
   --cream: #ede5d8;
   --warm-1: #e2d8c8;
   --gold: #c9963a;
-  --gold-2: #dba94c;
   --rust: #8b3a2a;
   --teal: #2a6b6b;
   --blue: #2a5f8b;
@@ -146,6 +145,38 @@ header.scrolled {
 .header-right a {
   text-decoration: none;
   color: inherit;
+}
+
+/* Sélecteur de langue FR/EN, dans l'en-tête à côté de la pastille OpenAlex/arXiv */
+.lang-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 99px;
+  border: 1px solid var(--border-2);
+  background: var(--cream);
+}
+
+.lang-btn {
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+
+.lang-btn:hover {
+  color: var(--text);
+}
+
+.lang-btn.active {
+  background: var(--gold);
+  color: #fff;
 }
 
 .hpill {
@@ -849,9 +880,7 @@ header.scrolled {
   margin: 1.25rem 0;
 }
 
-/* ══ Responsive ═══════════════════════════════════════════════════════ */
-
-@media (max-width: 700px) {
+@media(max-width:700px) {
   .hero h1 {
     font-size: 1.75rem;
   }
@@ -860,148 +889,12 @@ header.scrolled {
     grid-template-columns: 1fr;
   }
 
-  .nav-btn {
-    padding: 5px 10px;
-    font-size: 12px;
-  }
-
-  .section-card {
-    padding: 1.1rem 1.15rem;
-  }
-
-  .map-legend {
-    flex-wrap: wrap;
-    row-gap: 4px;
-  }
-
-  .bar-label {
-    width: 90px;
-  }
-
-  /* La frise d'évolution (jusqu'à 16 mois) ne peut pas tenir sur un écran
-     mobile sans devenir illisible si on compresse chaque colonne : on la
-     transforme plutôt en bande défilable horizontalement, avec une
-     largeur minimale par colonne qui garde les libellés de mois lisibles. */
-  .timeline-bars {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    padding-bottom: 6px;
-  }
-
-  .tl-col {
-    flex: 0 0 auto;
-    width: 36px;
-  }
-
-  .tl-lbl {
-    max-width: 36px;
-  }
-}
-
-@media (max-width: 480px) {
-  .container {
-    padding: 0 1rem;
-  }
-
-  .header-inner {
-    height: auto;
-    min-height: 52px;
-    padding: 8px 0;
-    flex-wrap: wrap;
-    gap: .5rem;
-  }
-
-  .logo {
-    font-size: 1rem;
-  }
-
-  .logo-mark {
-    width: 24px;
-    height: 24px;
-    font-size: 11px;
-  }
-
-  .hpill {
-    font-size: 10px;
-    padding: 3px 8px;
-  }
-
-  .hero {
-    min-height: auto;
-  }
-
-  .hero .container {
-    padding: 2.25rem 1rem 2rem;
-  }
-
-  .hero-eyebrow {
-    font-size: 10px;
-    padding: 3px 9px;
-    white-space: normal;
-  }
-
-  .hero h1 {
-    font-size: 1.5rem;
-  }
-
-  .hero-sub {
-    font-size: 13px;
-  }
-
-  .section-card {
-    padding: 1rem;
-    border-radius: var(--radius-lg);
-  }
-
-  .section-title {
-    font-size: 1.02rem;
-  }
-
-  .stat-strip {
+  .compare-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .stat-val {
-    font-size: 1.25rem;
-  }
-
-  .m-pill,
   .nav-btn {
-    padding: 7px 12px;
-  }
-
-  .cloud-word {
-    padding: 5px 8px;
-  }
-
-  .country-sidebar {
-    padding: .85rem;
-  }
-
-  .bar-label {
-    width: 72px;
-    font-size: 11px;
-  }
-
-  .link-btn,
-  .kw-tag,
-  .meta-pill {
-    padding: 4px 10px;
-  }
-
-  .article-card {
-    padding: .9rem 1rem;
-  }
-
-  /* Le toast était ancré à droite avec une largeur libre : sur un écran
-     étroit avec un message un peu long, il pouvait déborder du viewport
-     (masqué par overflow-x:hidden sur body plutôt que d'être visible en
-     entier). En pleine largeur bornée, il reste toujours lisible. */
-  .toast {
-    left: 1rem;
-    right: 1rem;
-    bottom: 1rem;
-    text-align: center;
+    padding: 5px 10px;
+    font-size: 12px;
   }
 }
