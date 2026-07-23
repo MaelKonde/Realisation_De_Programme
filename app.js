@@ -651,7 +651,12 @@ function selectCountry(code, event){
   const maxV = sorted[0]?.poids||1;
 
   const titre=document.getElementById('sidebarTitle');
-  if(titre) titre.textContent = `${info.flag} ${info.label}`;
+  // FIX : `info.flag` contient maintenant du HTML (une balise <img>, voir
+  // getFlagImgHtml() dans data.js) et non plus un simple caractère emoji.
+  // `textContent` affichait donc le tag <img ...> tel quel, en texte brut,
+  // au lieu de rendre le drapeau. On utilise `innerHTML` ici (comme c'est
+  // déjà le cas partout ailleurs : tooltip de la carte, cartes d'articles).
+  if(titre) titre.innerHTML = `${info.flag} ${info.label}`;
   const barres=document.getElementById('sidebarBars');
   if(barres){
     barres.innerHTML = sorted.length ? sorted.map(({mot:w,poids:v})=>`
