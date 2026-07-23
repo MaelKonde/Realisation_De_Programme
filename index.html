@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast"></div>  
 
 <!-- Header -->
 <header id="header">
@@ -25,6 +25,10 @@
     <a class="logo" href="#" onclick="window.scrollTo({top:0,behavior:'smooth'});return false;"><div class="logo-mark">✦</div><span>Veille</span><em>Scientifique</em></a>
 
     <div class="header-right">
+  <div class="lang-switch" aria-label="Choix de la langue / Language choice">
+    <button class="lang-btn" data-lang="fr" onclick="setLang('fr')">FR</button>
+    <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+  </div>
   <span class="hpill live">
     ● <a href="https://openalex.org/" target="_blank" rel="noopener noreferrer">OpenAlex</a>
     ·
@@ -40,9 +44,9 @@
   <div class="hero-overlay"></div>
   <canvas id="starCanvas"></canvas>
   <div class="container">
-    <div class="hero-eyebrow">✦ arXiv · OpenAlex · Fév 2025 → Juin 2026</div>
-    <h1>Mots-clés <em>tendance</em><br>de la recherche mondiale</h1>
-    <p class="hero-sub">Visualisez les sujets scientifiques dominants mois par mois et par pays, extraits de l'index inversé des abstracts arXiv via OpenAlex.</p>
+    <div class="hero-eyebrow" data-i18n="hero_eyebrow">✦ arXiv · OpenAlex · Fév 2025 → Juin 2026</div>
+    <h1 data-i18n-html="hero_title_html">Mots-clés <em>tendance</em><br>de la recherche mondiale</h1>
+    <p class="hero-sub" data-i18n="hero_sub">Visualisez les sujets scientifiques dominants mois par mois et par pays, extraits de l'index inversé des abstracts arXiv via OpenAlex.</p>
   </div>
 </section>
 
@@ -59,8 +63,8 @@
     <div class="section-card">
       <div class="section-head">
         <div>
-          <div class="section-title">Nuage de mots-clés par mois</div>
-          <div class="section-sub">Mots scientifiques extraits des abstracts · cliquez sur un mot pour tracer son évolution</div>
+          <div class="section-title" data-i18n="nuage_title">Nuage de mots-clés par mois</div>
+          <div class="section-sub" data-i18n="nuage_sub">Mots scientifiques extraits des abstracts · cliquez sur un mot pour tracer son évolution</div>
         </div>
       </div>
       <div class="month-pills" id="monthPills"></div>
@@ -71,10 +75,10 @@
     <div class="section-card">
       <div class="section-head">
         <div>
-          <div class="section-title">Carte mondiale des mots-clés</div>
-          <div class="section-sub">Taille des bulles = volume de recherche · Cliquez sur un pays pour ses mots dominants</div>
+          <div class="section-title" data-i18n="carte_title">Carte mondiale des mots-clés</div>
+          <div class="section-sub" data-i18n="carte_sub">Taille des bulles = volume de recherche · Cliquez sur un pays pour ses mots dominants</div>
         </div>
-        <button onclick="resetMapZoom()" style="font-size:12px;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--border-2);background:var(--cream);color:var(--text-2);cursor:pointer;">⟳ Recentrer</button>
+        <button onclick="resetMapZoom()" data-i18n="btn_recentrer" style="font-size:12px;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--border-2);background:var(--cream);color:var(--text-2);cursor:pointer;">⟳ Recentrer</button>
       </div>
       <div class="country-panel-row">
         <div class="map-wrapper">
@@ -83,14 +87,14 @@
             <div id="mapTooltip"></div>
           </div>
           <div class="map-legend">
-            <span class="legend-bubble" style="width:8px;height:8px;"></span> Peu de recherches
-            <span class="legend-bubble" style="width:16px;height:16px;margin-left:6px;"></span> Volume moyen
-            <span class="legend-bubble" style="width:24px;height:24px;margin-left:6px;"></span> Très actif
+            <span class="legend-bubble" style="width:8px;height:8px;"></span> <span data-i18n="legend_bas">Peu de recherches</span>
+            <span class="legend-bubble" style="width:16px;height:16px;margin-left:6px;"></span> <span data-i18n="legend_moyen">Volume moyen</span>
+            <span class="legend-bubble" style="width:24px;height:24px;margin-left:6px;"></span> <span data-i18n="legend_haut">Très actif</span>
           </div>
         </div>
         <div class="country-sidebar">
-          <div class="country-sidebar-title" id="sidebarTitle">Survolez un pays</div>
-          <div id="sidebarBars"><p style="font-size:12px;color:var(--text-3);line-height:1.6;">Cliquez sur une bulle pour voir les mots-clés dominants.</p></div>
+          <div class="country-sidebar-title" id="sidebarTitle" data-i18n="sidebar_titre_defaut">Survolez un pays</div>
+          <div id="sidebarBars"><p style="font-size:12px;color:var(--text-3);line-height:1.6;" data-i18n="sidebar_texte_defaut">Cliquez sur une bulle pour voir les mots-clés dominants.</p></div>
         </div>
       </div>
     </div>
@@ -99,20 +103,20 @@
     <div class="section-card">
       <div class="section-head">
         <div>
-          <div class="section-title">Évolution d'un mot-clé dans le temps</div>
-          <div class="section-sub">Cliquez sur un mot du nuage ou saisissez un terme</div>
+          <div class="section-title" data-i18n="evo_title">Évolution d'un mot-clé dans le temps</div>
+          <div class="section-sub" data-i18n="evo_sub">Cliquez sur un mot du nuage ou saisissez un terme</div>
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:1rem;">
-        <input type="text" id="evoInput" placeholder="Ex : quantum, diffusion, multimodal…"
+        <input type="text" id="evoInput" placeholder="Ex : quantum, diffusion, multimodal…" data-i18n-placeholder="evo_placeholder"
           style="flex:1;background:var(--cream);border:1.5px solid var(--border-2);border-radius:var(--radius-lg);padding:9px 14px;font-size:14px;color:var(--text);outline:none;"
           onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor=''"
           onkeydown="if(event.key==='Enter') traceEvolution(this.value.trim())"/>
-        <button style="background:var(--gold);color:#fff;border:none;border-radius:var(--radius-lg);padding:9px 20px;font-size:13px;font-weight:600;box-shadow:0 2px 10px rgba(201,150,58,.3);cursor:pointer;"
+        <button data-i18n="btn_tracer" style="background:var(--gold);color:#fff;border:none;border-radius:var(--radius-lg);padding:9px 20px;font-size:13px;font-weight:600;box-shadow:0 2px 10px rgba(201,150,58,.3);cursor:pointer;"
           onclick="traceEvolution(document.getElementById('evoInput').value.trim())">Tracer →</button>
       </div>
       <div id="evoSuggestions" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:1rem;"></div>
-      <div class="evo-word-label" id="evoLabel">Saisissez un mot-clé ci-dessus ou cliquez sur le nuage.</div>
+      <div class="evo-word-label" id="evoLabel" data-i18n="evo_label_defaut">Saisissez un mot-clé ci-dessus ou cliquez sur le nuage.</div>
       <div class="timeline-bars" id="evoChart" style="height:110px;"></div>
       <div style="font-size:11px;color:var(--text-3);margin-top:.5rem;text-align:center;" id="evoNote"></div>
     </div>
@@ -121,12 +125,12 @@
     <div class="section-card">
       <div class="section-head">
         <div>
-          <div class="section-title">Articles les plus cités</div>
-          <div class="section-sub" id="articlesSub">Sélection des articles à fort impact · cliquez sur un mot du nuage pour filtrer</div>
+          <div class="section-title" data-i18n="articles_title">Articles les plus cités</div>
+          <div class="section-sub" id="articlesSub" data-i18n="articles_sub_defaut">Sélection des articles à fort impact · cliquez sur un mot du nuage pour filtrer</div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <button id="resetArticlesBtn" onclick="resetArticles()" style="display:none;font-size:12px;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--border-2);background:var(--cream);color:var(--text-2);cursor:pointer;font-weight:500;">✕ Tous</button>
-          <button onclick="exportArticlesCSV()" style="font-size:12px;padding:5px 12px;border-radius:var(--radius);border:1.5px solid var(--border-2);background:#fff;color:var(--text-2);cursor:pointer;font-weight:500;transition:all .2s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='';this.style.color=''">⬇ Export CSV</button>
+          <button id="resetArticlesBtn" onclick="resetArticles()" data-i18n="btn_tous" style="display:none;font-size:12px;padding:5px 12px;border-radius:var(--radius);border:1px solid var(--border-2);background:var(--cream);color:var(--text-2);cursor:pointer;font-weight:500;">✕ Tous</button>
+          <button onclick="exportArticlesCSV()" data-i18n="btn_export_csv" style="font-size:12px;padding:5px 12px;border-radius:var(--radius);border:1.5px solid var(--border-2);background:#fff;color:var(--text-2);cursor:pointer;font-weight:500;transition:all .2s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='';this.style.color=''">⬇ Export CSV</button>
         </div>
       </div>
       <div id="topArticlesList"></div>
@@ -157,14 +161,14 @@
           <span style="color:#c9963a;">Veille </span><em> Scientifique</em>
         </div>
         <p style="font-size:12px;color:rgba(245,239,230,.4);max-width:260px;line-height:1.65;">
-          Outil de veille scientifique basé sur les données<br>
+          <span data-i18n="footer_desc">Outil de veille scientifique basé sur les données</span><br>
           <strong style="color:rgba(245,239,230,.55);">OpenAlex · arXiv</strong>
         </p>
       </div>
 
       <!-- Étudiants -->
       <div>
-        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(245,239,230,.3);margin-bottom:.75rem;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(245,239,230,.3);margin-bottom:.75rem;" data-i18n="footer_etudiants">
           Étudiants
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
@@ -172,28 +176,28 @@
             <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#c9963a,#8b3a2a);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;">CD</div>
             <div>
               <div style="font-size:13px;font-weight:600;color:rgba(245,239,230,.85);">Cyril Debrabant</div>
-              <div style="font-size:11px;color:rgba(245,239,230,.35);">Analyse &amp; traitement des données et Collecte · OpenAlex API</div>
+              <div style="font-size:11px;color:rgba(245,239,230,.35);" data-i18n="footer_role_cyril">Analyse &amp; traitement des données et Collecte · OpenAlex API</div>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
             <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#2a6b6b,#1a4545);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;">MK</div>
             <div>
               <div style="font-size:13px;font-weight:600;color:rgba(245,239,230,.85);">Maël Khonde Mbumba</div>
-              <div style="font-size:11px;color:rgba(245,239,230,.35);">Interface front-end</div>
+              <div style="font-size:11px;color:rgba(245,239,230,.35);" data-i18n="footer_role_mael">Interface front-end</div>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
             <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#6b4a8b,#3d2060);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;">MV</div>
             <div>
               <div style="font-size:13px;font-weight:600;color:rgba(245,239,230,.85);">Matthieu Vacher</div>
-              <div style="font-size:11px;color:rgba(245,239,230,.35);">Base de données SQLite</div>
+              <div style="font-size:11px;color:rgba(245,239,230,.35);" data-i18n="footer_role_matthieu">Base de données SQLite</div>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
             <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#2a5f8b,#123050);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;">PP</div>
             <div>
               <div style="font-size:13px;font-weight:600;color:rgba(245,239,230,.85);">Paloma Parnet Dit Mortel</div>
-              <div style="font-size:11px;color:rgba(245,239,230,.35);">Project Owner et Collecte des données</div>
+              <div style="font-size:11px;color:rgba(245,239,230,.35);" data-i18n="footer_role_paloma">Project Owner et Collecte des données</div>
             </div>
           </div>
         </div>
@@ -201,7 +205,7 @@
 
       <!-- Stack technique -->
       <div>
-        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(245,239,230,.3);margin-bottom:.75rem;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(245,239,230,.3);margin-bottom:.75rem;" data-i18n="footer_stack">
           Stack technique
         </div>
         <div style="display:flex;flex-direction:column;gap:5px;">
@@ -219,7 +223,7 @@
 </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="font-size:14px;">🗄️</span>
-            <span style="font-size:12px;color:rgba(245,239,230,.6);">SQLite · Flask <span style="color:rgba(245,239,230,.28);font-size:11px;">(à venir)</span></span>
+            <span style="font-size:12px;color:rgba(245,239,230,.6);">SQLite · Flask <span style="color:rgba(245,239,230,.28);font-size:11px;" data-i18n="footer_stack_bientot">(à venir)</span></span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="font-size:14px;">🌐</span>
@@ -244,9 +248,9 @@
     <!-- Bottom row -->
     <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;">
       <div style="font-size:11px;color:rgba(245,239,230,.25);">
-        Projet Universitaire de validation du cours <span style="font-size:13px;font-weight:600;color:rgba(245,239,230,.85);"> Réalisation de Programme</span> DN24EM02
+        <span data-i18n="footer_projet">Projet Universitaire de validation du cours</span> <span style="font-size:13px;font-weight:600;color:rgba(245,239,230,.85);"> Réalisation de Programme</span> DN24EM02
       </div>
-      <div style="font-size:11px;color:rgba(245,239,230,.2);">
+      <div style="font-size:11px;color:rgba(245,239,230,.2);" data-i18n="footer_licence">
         Licence 2 Informatique IED
       </div>
     </div>
@@ -254,8 +258,9 @@
   </div>
 </footer>
 
-<!-- Scripts : ordre important (config → data → app) -->
+<!-- Scripts : ordre important (config → i18n → data → app) -->
 <script src="config.js"></script>
+<script src="i18n.js"></script>
 <script src="data.js"></script>
 <script src="app.js"></script>
 
