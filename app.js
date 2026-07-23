@@ -435,13 +435,35 @@ function appliquerCarteMois(mois){
 
   if(mapInitialized) updateMapBubbles();
 
-  // Le pays mis en avant est TOUJOURS celui qui pèse le plus dans la vue
-  // courante (global ou mois sélectionné) -- recalculé à CHAQUE changement
-  // de mois, pour ne jamais rester bloqué sur un pays qui n'est plus le
-  // plus représentatif de cette période (ex. un pays dominant globalement
-  // mais absent du top sur un mois donné).
-  const premier = Object.entries(countryMap).sort((a,b)=>b[1].total-a[1].total)[0];
-  ACTIVE_COUNTRY = premier ? premier[0] : null;
+  // Le pays mis en avant doit être celui où le MOT-CLÉ DOMINANT DU NUAGE
+  // (topKW, le même mot affiché en plus gros dans le nuage pour cette vue)
+  // pèse le plus lourd -- pas simplement le pays qui publie le plus
+  // d'articles au total. Exemple concret signalé : en octobre 2025,
+  // "learning" est le mot dominant, avec un poids de 380 en Chine contre
+  // 307 aux États-Unis ; le panneau doit donc mettre en avant la Chine,
+  // même si les États-Unis ont davantage d'articles au total ce mois-là.
+  const dataMotsMois = mois ? (MONTHLY_KW[mois] || {}) : GLOBAL_KW;
+  const topKW = Object.entries(dataMotsMois).sort((a,b)=>b[1]-a[1])[0]?.[0];
+
+  let meilleurCode = null;
+  let meilleurPoids = -1;
+  if (topKW) {
+    for (const [code, info] of Object.entries(countryMap)) {
+      const entree = (info.mots || []).find(m => m.mot === topKW);
+      const poids = entree ? entree.poids : 0;
+      if (poids > meilleurPoids) { meilleurPoids = poids; meilleurCode = code; }
+    }
+  }
+
+  if (meilleurCode && meilleurPoids > 0) {
+    ACTIVE_COUNTRY = meilleurCode;
+  } else {
+    // Repli : aucun pays n'a ce mot-clé dans son top (ou pas de mot
+    // dominant identifiable) -- on retombe sur le pays le plus actif au
+    // total, pour ne jamais laisser le panneau vide sans raison.
+    const premier = Object.entries(countryMap).sort((a,b)=>b[1].total-a[1].total)[0];
+    ACTIVE_COUNTRY = premier ? premier[0] : null;
+  }
 
   if(ACTIVE_COUNTRY && document.getElementById('sidebarBars')){
     selectCountry(ACTIVE_COUNTRY);
