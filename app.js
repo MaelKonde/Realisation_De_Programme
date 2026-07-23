@@ -740,18 +740,47 @@ function renderMultiEvo(){ /* single page — removed */ }
 /** Recherche/filtre fait côté serveur (mot-clé -> table `mot_articles`
  *  indexée, mois -> filtre SQL) au lieu de filtrer un tableau de 500 000
  *  articles en mémoire. Auteurs déjà embarqués dans la réponse. */
+/** Résout une saisie libre (ex. "data") vers les mots-clés RÉELS du
+ *  référentiel qui la contiennent (ex. "dataset", "data analysis", ...) --
+ *  la même logique d'inclusion que poidsMotDansMois() utilise déjà pour la
+ *  frise d'évolution. Égalité exacte prioritaire (cas le plus fréquent :
+ *  clic direct sur un mot du nuage), sinon toutes les correspondances par
+ *  inclusion. Sans cette résolution, chercher "data" ne trouvait aucun
+ *  article (recherche exacte dans mot_articles) alors que la frise
+ *  d'évolution affichait pourtant un score non nul pour ce même terme. */
+function resoudreMotsCorrespondants(saisie){
+  const s = (saisie || '').toLowerCase().trim();
+  if (!s) return [];
+  if (Object.prototype.hasOwnProperty.call(GLOBAL_KW, s)) return [s];
+  return Object.keys(GLOBAL_KW).filter(m => m.includes(s));
+}
+
 async function renderTopArticles(keyword){
   const sub = document.getElementById('articlesSub');
   if(sub) sub.textContent = 'Recherche des articles…';
 
   let arts = [];
   try {
-    const bruts = await fetchArticlesRecherche({
-      mot: keyword || '',
-      mois: ACTIVE_MONTH || '',
-      limite: 20,
-    });
-    arts = bruts.map(normaliserArticle);
+    if (keyword) {
+      const motsCorrespondants = resoudreMotsCorrespondants(keyword);
+      if (motsCorrespondants.length) {
+        const resultats = await Promise.all(
+          motsCorrespondants.map(m => fetchArticlesRecherche({ mot: m, mois: ACTIVE_MONTH || '', limite: 20 }))
+        );
+        // Fusionne les résultats des différents mots-clés correspondants
+        // (un même article peut apparaître pour plusieurs), déduplique par
+        // id, retrie par citations, garde le top 20 global.
+        const parId = new Map();
+        resultats.flat().forEach(a => { if (!parId.has(a.id)) parId.set(a.id, a); });
+        const bruts = [...parId.values()].sort((a,b)=>(b.citations||0)-(a.citations||0)).slice(0,20);
+        arts = bruts.map(normaliserArticle);
+      }
+      // Si aucun mot-clé du référentiel ne contient la saisie, `arts` reste
+      // vide -- comportement correct (aucune expression réelle à chercher).
+    } else {
+      const bruts = await fetchArticlesRecherche({ mois: ACTIVE_MONTH || '', limite: 20 });
+      arts = bruts.map(normaliserArticle);
+    }
   } catch(err) {
     console.error(err);
     toast('Erreur pendant la recherche d\'articles');
