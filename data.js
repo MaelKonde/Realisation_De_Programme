@@ -100,13 +100,12 @@ function getFlagEmoji(isoCode) {
  * l'identique sur toutes les plateformes, quelle que soit la police
  * d'emoji installée. */
 function getFlagImgHtml(isoCode) {
-  const special = { XK: 'xk' };
+  const special = { XK: 'xk' }; // Kosovo : flagcdn.com le référence sous 'xk'
   const code = (special[isoCode] || isoCode).toLowerCase();
-
-  return `<img src="https://flagcdn.com/16x12/${code}.png"
-    srcset="https://flagcdn.com/32x24/${code}.png 2x"
-    width="16" height="12" alt="${isoCode}" loading="lazy"
-    style="vertical-align:middle;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.08);">`;
+  return `<img src="https://flagcdn.com/16x12/${code}.png" `
+    + `srcset="https://flagcdn.com/32x24/${code}.png 2x" `
+    + `width="16" height="12" alt="${isoCode}" loading="lazy" `
+    + `style="vertical-align:middle;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.08);">`;
 }
 
 const NOMS_PAYS = {
@@ -182,11 +181,96 @@ const NOMS_PAYS = {
  * app.js n'a rien à changer, il interpole déjà `${info.flag}` tel quel
  * dans ses templates (tooltip de la carte, panneau pays, pastilles
  * d'articles) — un <img> s'y insère aussi bien qu'un caractère emoji. */
+
+/* Équivalent anglais de NOMS_PAYS ci-dessus (même 198 codes, vérifié).
+ * Généré via pycountry (référentiel ISO 3166), avec quelques corrections
+ * manuelles pour un anglais plus naturel (ex. "Russia" plutôt que le nom
+ * officiel ISO "Russian Federation"). */
+const NOMS_PAYS_EN = {
+  // --- Amérique du Nord ---
+  US:'United States', CA:'Canada', MX:'Mexico', BZ:'Belize',
+  CR:'Costa Rica', SV:'El Salvador', GT:'Guatemala', HN:'Honduras',
+  NI:'Nicaragua', PA:'Panama',
+
+  // --- Caraïbes ---
+  BS:'Bahamas', BB:'Barbados', CU:'Cuba', DM:'Dominica',
+  DO:'Dominican Republic', GD:'Grenada', HT:'Haiti', JM:'Jamaica',
+  KN:'Saint Kitts and Nevis', LC:'Saint Lucia', VC:'Saint Vincent and the Grenadines', TT:'Trinidad and Tobago',
+
+  // --- Amérique du Sud ---
+  BR:'Brazil', AR:'Argentina', BO:'Bolivia', CL:'Chile',
+  CO:'Colombia', EC:'Ecuador', GY:'Guyana', PY:'Paraguay',
+  PE:'Peru', SR:'Suriname', UY:'Uruguay', VE:'Venezuela',
+
+  // --- Europe ---
+  FR:'France', DE:'Germany', GB:'United Kingdom', ES:'Spain',
+  IT:'Italy', CH:'Switzerland', NL:'Netherlands', SE:'Sweden',
+  PL:'Poland', AT:'Austria', CZ:'Czechia', BE:'Belgium',
+  DK:'Denmark', FI:'Finland', NO:'Norway', PT:'Portugal',
+  IE:'Ireland', GR:'Greece', AL:'Albania', AD:'Andorra',
+  BY:'Belarus', BA:'Bosnia and Herzegovina', BG:'Bulgaria', HR:'Croatia',
+  EE:'Estonia', HU:'Hungary', IS:'Iceland', XK:'Kosovo',
+  LV:'Latvia', LI:'Liechtenstein', LT:'Lithuania', LU:'Luxembourg',
+  MT:'Malta', MD:'Moldova', MC:'Monaco', ME:'Montenegro',
+  MK:'North Macedonia', RO:'Romania', SM:'San Marino', RS:'Serbia',
+  SK:'Slovakia', SI:'Slovenia', UA:'Ukraine', VA:'Vatican City',
+  RU:'Russia', TR:'Türkiye', CY:'Cyprus',
+
+  // --- Asie ---
+  CN:'China', JP:'Japan', IN:'India', KR:'South Korea',
+  HK:'Hong Kong', SG:'Singapore', TW:'Taiwan', IL:'Israel',
+  SA:'Saudi Arabia', AF:'Afghanistan', AM:'Armenia', AZ:'Azerbaijan',
+  BH:'Bahrain', BD:'Bangladesh', BT:'Bhutan', BN:'Brunei',
+  KH:'Cambodia', GE:'Georgia', ID:'Indonesia', IR:'Iran',
+  IQ:'Iraq', JO:'Jordan', KZ:'Kazakhstan', KW:'Kuwait',
+  KG:'Kyrgyzstan', LA:'Laos', LB:'Lebanon', MY:'Malaysia',
+  MV:'Maldives', MN:'Mongolia', MM:'Myanmar', NP:'Nepal',
+  KP:'North Korea', OM:'Oman', PK:'Pakistan', PS:'Palestine',
+  PH:'Philippines', QA:'Qatar', LK:'Sri Lanka', SY:'Syria',
+  TJ:'Tajikistan', TH:'Thailand', TL:'Timor-Leste', TM:'Turkmenistan',
+  AE:'United Arab Emirates', UZ:'Uzbekistan', VN:'Vietnam', YE:'Yemen',
+
+  // --- Afrique ---
+  ZA:'South Africa', DZ:'Algeria', AO:'Angola', BJ:'Benin',
+  BW:'Botswana', BF:'Burkina Faso', BI:'Burundi', CM:'Cameroon',
+  CV:'Cabo Verde', CF:'Central African Republic', TD:'Chad', KM:'Comoros',
+  CG:'Congo', CD:'Democratic Republic of the Congo', CI:'Côte d\'Ivoire', DJ:'Djibouti',
+  EG:'Egypt', GQ:'Equatorial Guinea', ER:'Eritrea', SZ:'Eswatini',
+  ET:'Ethiopia', GA:'Gabon', GM:'Gambia', GH:'Ghana',
+  GN:'Guinea', GW:'Guinea-Bissau', KE:'Kenya', LS:'Lesotho',
+  LR:'Liberia', LY:'Libya', MG:'Madagascar', MW:'Malawi',
+  ML:'Mali', MR:'Mauritania', MU:'Mauritius', MA:'Morocco',
+  MZ:'Mozambique', NA:'Namibia', NE:'Niger', NG:'Nigeria',
+  RW:'Rwanda', ST:'Sao Tome and Principe', SN:'Senegal', SC:'Seychelles',
+  SL:'Sierra Leone', SO:'Somalia', SS:'South Sudan', SD:'Sudan',
+  TZ:'Tanzania', TG:'Togo', TN:'Tunisia', UG:'Uganda',
+  ZM:'Zambia', ZW:'Zimbabwe', EH:'Western Sahara',
+
+  // --- Océanie ---
+  AU:'Australia', FJ:'Fiji', KI:'Kiribati', MH:'Marshall Islands',
+  FM:'Micronesia', NR:'Nauru', NZ:'New Zealand', PW:'Palau',
+  PG:'Papua New Guinea', WS:'Samoa', SB:'Solomon Islands', TO:'Tonga',
+  TV:'Tuvalu', VU:'Vanuatu',
+
+};
+
+/* PAYS_INFO utilise NOMS_PAYS ou NOMS_PAYS_EN selon la langue courante
+ * (LANG est définie par i18n.js, chargé avant ce fichier). Le choix de
+ * langue ne change qu'au rechargement de la page (voir setLang() dans
+ * i18n.js), donc PAYS_INFO n'a besoin d'être construit qu'une seule fois
+ * ici, avec la bonne langue déjà connue. */
+const NOMS_ACTIFS = (typeof LANG !== 'undefined' && LANG === 'en') ? NOMS_PAYS_EN : NOMS_PAYS;
 const PAYS_INFO = Object.fromEntries(
-  Object.entries(NOMS_PAYS).map(([code, label]) => [
+  Object.entries(NOMS_ACTIFS).map(([code, label]) => [
     code,
     { label, flag: getFlagImgHtml(code) },
   ])
 );
 
-module.exports = { CENTROIDS, PAYS_INFO, getFlagEmoji, getFlagImgHtml };
+// Garde nécessaire pour fonctionner à la fois dans un navigateur (où
+// `module` n'existe pas -- sans cette garde, cette ligne provoquait une
+// erreur "module is not defined" en fin de chargement) et en Node.js
+// (utile pour les tests, cf. les scripts de vérification du projet).
+if (typeof module !== 'undefined') {
+  module.exports = { CENTROIDS, PAYS_INFO, getFlagEmoji, getFlagImgHtml };
+}
