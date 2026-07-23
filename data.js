@@ -255,9 +255,9 @@ const NOMS_PAYS_EN = {
 };
 
 /* PAYS_INFO utilise NOMS_PAYS ou NOMS_PAYS_EN selon la langue courante
- * (LANG est définie par i18n.js, chargé avant ce fichier). Le choix de
+ * (LANG est définie par translateSystem.js, chargé avant ce fichier). Le choix de
  * langue ne change qu'au rechargement de la page (voir setLang() dans
- * i18n.js), donc PAYS_INFO n'a besoin d'être construit qu'une seule fois
+ * translateSystem.js), donc PAYS_INFO n'a besoin d'être construit qu'une seule fois
  * ici, avec la bonne langue déjà connue. */
 const NOMS_ACTIFS = (typeof LANG !== 'undefined' && LANG === 'en') ? NOMS_PAYS_EN : NOMS_PAYS;
 const PAYS_INFO = Object.fromEntries(
