@@ -100,12 +100,13 @@ function getFlagEmoji(isoCode) {
  * l'identique sur toutes les plateformes, quelle que soit la police
  * d'emoji installée. */
 function getFlagImgHtml(isoCode) {
-  const special = { XK: 'xk' }; // Kosovo : flagcdn.com le référence sous 'xk'
+  const special = { XK: 'xk' };
   const code = (special[isoCode] || isoCode).toLowerCase();
-  return `<img src="https://flagcdn.com/16x12/${code}.png" `
-    + `srcset="https://flagcdn.com/32x24/${code}.png 2x" `
-    + `width="16" height="12" alt="${isoCode}" loading="lazy" `
-    + `style="vertical-align:middle;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.08);">`;
+
+  return `<img src="https://flagcdn.com/16x12/${code}.png"
+    srcset="https://flagcdn.com/32x24/${code}.png 2x"
+    width="16" height="12" alt="${isoCode}" loading="lazy"
+    style="vertical-align:middle;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.08);">`;
 }
 
 const NOMS_PAYS = {
