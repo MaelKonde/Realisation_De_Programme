@@ -118,6 +118,7 @@ async function fetchArticlesRecherche({ mot = '', q = '', mois = '', limite = 20
 let MONTHLY_KW       = {}; // { "2025-03": {mot:poids}, ... } — précalculé côté serveur
 let GLOBAL_KW        = {}; // agrégat tous mois confondus — précalculé côté serveur
 let MONTH_ORDER      = [];
+let ARTICLES_PAR_MOIS = {}; // { "2025-03": 12345, ... } — précalculé côté serveur
 let countryMap       = {}; // vue COURANTE (dérivée de CARTE_DATA selon ACTIVE_MONTH)
 
 /** Données brutes complètes reçues de /agregats/carte : contient déjà tout
@@ -232,9 +233,18 @@ function renderStatStrip(){
     ? `sur ${DERIVED_STATS.total_articles_avec_pays.toLocaleString('fr-FR')} art. avec pays identifié${ACTIVE_MONTH ? ' ce mois' : ''}`
     : 'aucune donnée pour ce mois';
 
+  // Nombre d'articles affiché : celui du mois sélectionné (précalculé côté
+  // serveur), ou le total global si "Tous les mois" est actif. Auparavant
+  // cette carte affichait toujours DERIVED_STATS.total_articles (le total
+  // global), même en filtrant par mois.
+  const articlesAffiches = ACTIVE_MONTH
+    ? (ARTICLES_PAR_MOIS[ACTIVE_MONTH] || 0)
+    : DERIVED_STATS.total_articles;
+  const noteArticles = ACTIVE_MONTH ? formatMonthLabel(ACTIVE_MONTH) : 'arXiv via OpenAlex';
+
   document.getElementById('statStrip').innerHTML=`
     <div class="stat-card"><div class="stat-label">Articles chargés</div>
-      <div class="stat-val g" id="sc-tot">0</div><div class="stat-note">arXiv via OpenAlex</div></div>
+      <div class="stat-val g" id="sc-tot">0</div><div class="stat-note">${noteArticles}</div></div>
     <div class="stat-card"><div class="stat-label">Mois couverts</div>
       <div class="stat-val">${DERIVED_STATS.total_mois}</div></div>
     <div class="stat-card"><div class="stat-label">Pays</div>
@@ -242,7 +252,7 @@ function renderStatStrip(){
     <div class="stat-card"><div class="stat-label">Mot top (${ACTIVE_MONTH?formatMonthLabel(ACTIVE_MONTH):'tous les mois'})</div>
       <div class="stat-val" style="font-size:1rem;padding-top:3px;font-style:italic;">${topKW}</div></div>
   `;
-  setTimeout(()=>animCount(document.getElementById('sc-tot'),DERIVED_STATS.total_articles),80);
+  setTimeout(()=>animCount(document.getElementById('sc-tot'),articlesAffiches),80);
 }
 
 /* ══ Cloud ═════════════════════════════════════════════════════════════ */
@@ -852,6 +862,7 @@ async function initApp() {
     MONTHLY_KW = agregats.par_mois || {};
     GLOBAL_KW  = agregats.global || {};
     MONTH_ORDER = Object.keys(MONTHLY_KW).sort();
+    ARTICLES_PAR_MOIS = agregats.articles_par_mois || {};
     DERIVED_STATS.total_articles  = agregats.total_articles  || 0;
     DERIVED_STATS.total_citations = agregats.total_citations || 0;
     DERIVED_STATS.total_mois      = MONTH_ORDER.length;
