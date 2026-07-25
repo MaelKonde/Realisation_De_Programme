@@ -5,7 +5,7 @@ Usage...... : Charger en premier (avant data.js et app.js)
 */
 const APP_CONFIG = {
   BACKEND_API_URL: 'https://veille-scientifique-api.onrender.com',
-  TAILLE_PAGE_ARTICLES: 500,
+  /*TAILLE_PAGE_ARTICLES: 500,
   CONCURRENCE_PAGES: 3,
 
   // NB_ARTICLES_POUR_CARTE_PAYS a été retirée : la carte du monde par pays
