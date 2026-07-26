@@ -230,7 +230,7 @@ def recherche_articles():
 # Routes historiques — conservées pour compatibilité, non appelées par le
 # front depuis le passage à /agregats/nuage + /agregats/carte + /articles/recherche.
 # ─────────────────────────────────────────────────────────────────────────
-
+"""
 @application.route("/articles/count")
 def compter_articles():
     connexion = connecter_bdd()
@@ -250,12 +250,12 @@ def page_articles(numero):
 
     connexion = connecter_bdd()
     curseur = connexion.cursor()
-    curseur.execute("""
+    curseur.execute(
         SELECT id, titre, date, langue, citations, index_inverse_compte
         FROM articles
         ORDER BY date DESC
         LIMIT ? OFFSET ?
-    """, (taille, numero * taille))
+    , (taille, numero * taille))
     lignes = curseur.fetchall()
     connexion.close()
 
@@ -271,7 +271,7 @@ def page_articles(numero):
         for ligne in lignes
     ]
     return jsonify(articles)
-
+"""
 
 @application.route("/articles/<int:limite>")
 def liste_articles(limite):
@@ -298,7 +298,6 @@ def liste_articles(limite):
         for ligne in lignes
     ]
     return jsonify(articles)
-
 
 @application.route("/auteurs/<path:id_article>")
 def liste_auteurs(id_article):
