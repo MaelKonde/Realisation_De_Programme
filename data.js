@@ -1,7 +1,12 @@
 /*
-Nom........ : data.js
-Description : Accès à l'API Flask
-Usage...... : Charger après config.js et avant app.js.
+NOM DU SCRIPT : data.js
+ROLE          : Contient les données géographiques
+DESCRIPTION   : Accès à l'API Flask
+VERSION     : 1.1
+LICENCE     : réalisation de programme - data.js
+USAGE       :  Charger après config.js et avant app.js
+AUTEUR      : Maël Khonde Mbumba
+
 */
 
 const CENTROIDS = {
@@ -75,7 +80,7 @@ const CENTROIDS = {
    ISO via getFlagEmoji(), pour éviter toute erreur de saisie.
                                                                 */
 
-/* getFlagEmoji() ci-dessus produit un VRAI drapeau (🇫🇷) uniquement si la
+/* getFlagEmoji() ci-dessus produit un VRAI drapeau (����) uniquement si la
  * police d'emoji du système d'exploitation du visiteur sait dessiner la
  * paire de caractères Unicode "Regional Indicator Symbol" (U+1F1E6-1F1FF)
  * comme un drapeau. Le rendu dépend donc de la
@@ -83,7 +88,7 @@ const CENTROIDS = {
 
 function getFlagEmoji(isoCode) {
   // Cas particuliers sans indicatif ISO standard à 2 lettres classique
-  const special = { XK: '🇽🇰' }; // Kosovo (code non officiel ISO mais couramment utilisé)
+  const special = { XK: '����' }; // Kosovo (code non officiel ISO mais couramment utilisé)
   if (special[isoCode]) return special[isoCode];
   return isoCode
     .toUpperCase()
