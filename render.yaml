@@ -1,9 +1,16 @@
-# Nom........ : render.yaml (Render Blueprint — https://render.com/docs/blueprint-spec)
-# Description : Déploie 2 services :
-#                 - veille-scientifique-api   -> API Flask (lit bdd.db sur disque persistant)
-#                 - veille-scientifique-front -> site statique (index.html, app.js, ...)
-# Usage...... : Pousse ce dépôt sur GitHub, puis sur Render :
-#                 New > Blueprint > sélectionne ce dépôt > Deploy Blueprint.
+# NOM DU SCRIPT : render.yaml
+# ROLE          : Blueprint de déploiement Render (https://render.com/docs/blueprint-spec)
+# DESCRIPTION   : Déploie 2 services : "veille-scientifique-api" (API Flask, télécharge bdd.db
+#                 une seule fois sur un disque persistant de 2 Go puis la sert via gunicorn) et
+#                 "veille-scientifique-front" (site statique servant index.html, style.css,
+#                 app.js, config.js, data.js, favicon.svg, avec réécriture de toutes les routes
+#                 vers index.html)
+# VERSION       : 1.1
+# LICENCE       : réalisation de programme - render.yaml
+# USAGE         : Pousser ce dépôt sur GitHub, puis sur Render : New > Blueprint >
+#                 sélectionner ce dépôt > Deploy Blueprint
+# AUTEUR        : Maël Khonde Mbumba
+
 services:
   # ------------------------------------------------------------------------
   # 1) API Flask — bdd.db (~1,3 Go) vit sur un disque persistant, téléchargé
