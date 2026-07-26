@@ -10,7 +10,7 @@ VERSION       : 1.1
 LICENCE       : réalisation de programme - api_flask.py
 USAGE         : python3 api_flask.py (local, avec Flask dev server) ; en production sur
                 Render, l'application est démarrée par gunicorn
-AUTEUR        : Maël Khonde Mbumba et autres sources citées sur app.js (voir rapport .pdf)
+AUTEUR        : Maël Khonde Mbumba et autres sources citées sur le rapport .pdf
 """
 
 import os
