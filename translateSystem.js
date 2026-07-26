@@ -1,20 +1,15 @@
 /*
-Nom........ : translateSystem.js
-Description : Système de traduction FR/EN du front-end "Veille Scientifique".
-              Principe volontairement simple (pas de framework i18n) :
-                - LANG est déterminée une fois au chargement de la page
-                  (localStorage, sinon 'fr' par défaut) ;
-                - t(cle) renvoie la chaîne traduite dans la langue courante ;
-                - changer de langue (setLang) sauvegarde le choix puis
-                  RECHARGE la page plutôt que de re-rendre dynamiquement
-                  chaque élément : app.js exécute déjà tout son pipeline de
-                  rendu au chargement (initApp), donc un rechargement
-                  garantit que tout le contenu dynamique (nuage, carte,
-                  articles...) est régénéré dans la nouvelle langue sans
-                  avoir à dupliquer cette logique ailleurs.
-Usage...... : Charger juste après config.js, AVANT data.js et app.js
-              (data.js a besoin de LANG pour choisir NOMS_PAYS/NOMS_PAYS_EN,
-              app.js a besoin de t() et MOIS_LABELS).
+NOM DU SCRIPT : translateSystem.js
+ROLE          : Système de traduction FR/EN du front-end
+DESCRIPTION   : Gère la langue courante (LANG), le dictionnaire de traductions I18N (fr/en),
+                la fonction t() pour récupérer une chaîne traduite (statique ou paramétrée),
+                le changement de langue (setLang) avec rechargement de la page, l'application
+                des traductions aux éléments statiques du DOM (appliquerTraductionsStatiques)
+                et les libellés des mois par langue (MOIS_LABELS)
+VERSION       : 1.1
+LICENCE       : réalisation de programme - translateSystem.js
+USAGE         : Charger juste après config.js, avant data.js et app.js
+AUTEUR        : Maël Khonde Mbumba
 */
 
 let LANG = (function () {
