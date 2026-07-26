@@ -1,9 +1,16 @@
 """
-Nom........ : api_flask.py
-Description : API Flask pour "Tendances Scientifiques" (nuage de mots par mois,
-               carte mondiale par pays, évolution temporelle d'un mot-clé,
-               articles les plus cités).
-Usage : python3 api_flask.py
+NOM DU SCRIPT : api_flask.py
+ROLE          : API back-end de l'application "Tendances Scientifiques"
+DESCRIPTION   : Expose les routes Flask consommées par le front-end : agrégats précalculés
+                (nuage de mots-clés par mois/global, répartition par pays pour la carte),
+                recherche/filtrage d'articles (par mot-clé, titre, mois), liste paginée
+                d'articles et liste des auteurs par article. Lit la base bdd.db (SQLite)
+                sur le disque persistant Render, au même emplacement que download_db.py.
+VERSION       : 1.1
+LICENCE       : réalisation de programme - api_flask.py
+USAGE         : python3 api_flask.py (local, avec Flask dev server) ; en production sur
+                Render, l'application est démarrée par gunicorn
+AUTEUR        : Maël Khonde Mbumba et autres sources citées sur app.js (voir rapport .pdf)
 """
 
 import os
