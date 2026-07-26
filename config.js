@@ -1,15 +1,15 @@
 /*
 Nom........ : config.js
 Description : Configuration globale du front-end "Veille Scientifique"
-Usage...... : Charger en premier (avant data.js et app.js)
+Usage...... : Charger en premier avant translateSystem.js, data.js et app.js
 */
 const APP_CONFIG = {
+ 
+  // URL racine de l'API Flask (service Render "veille-scientifique-api",
+  // voir render.yaml). Utilisée par app.js pour préfixer tous les appels
+  // fetch : /agregats/nuage, /agregats/carte, /articles/recherche, etc.
+  // À changer ici uniquement si l'API change d'adresse (ex : environnement
+  // de test/local) — ne jamais dupliquer cette URL ailleurs dans le code.
   BACKEND_API_URL: 'https://veille-scientifique-api.onrender.com',
-  TAILLE_PAGE_ARTICLES: 500,
-  CONCURRENCE_PAGES: 3,
-
-  // NB_ARTICLES_POUR_CARTE_PAYS a été retirée : la carte du monde par pays
-  // est désormais précalculée sur L'INTÉGRALITÉ du corpus
-  // (route /agregats/carte), et non plus construite côté front à partir
-  // d'un échantillon des articles les plus cités.
+ 
 };
