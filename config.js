@@ -1,7 +1,12 @@
 /*
-Nom........ : config.js
-Description : Configuration globale du front-end "Veille Scientifique"
-Usage...... : Charger en premier avant translateSystem.js, data.js et app.js
+NOM DU SCRIPT : config.js
+ROLE          : Configuration globale du projet
+DESCRIPTION   : Configuration globale du front-end "Veille Scientifique"
+VERSION     : 1.1
+LICENCE     : réalisation de programme - config.js
+USAGE       : Charger en premier avant translateSystem.js, data.js et app.js
+AUTEUR      : Maël Khonde Mbumba
+
 */
 const APP_CONFIG = {
  
@@ -10,6 +15,7 @@ const APP_CONFIG = {
   // fetch : /agregats/nuage, /agregats/carte, /articles/recherche, etc.
   // À changer ici uniquement si l'API change d'adresse (ex : environnement
   // de test/local) — ne jamais dupliquer cette URL ailleurs dans le code.
+  
   BACKEND_API_URL: 'https://veille-scientifique-api.onrender.com',
  
 };
