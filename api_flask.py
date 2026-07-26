@@ -17,13 +17,12 @@ CORS(application)
 
 # Plafond de sécurité pour /articles/recherche : couvre largement le plus
 # gros usage légitime, sans permettre un ?limite=1000000 qui recréerait le
-# problème de départ. La carte des pays n'en dépend plus (voir
-# /agregats/carte, précalculée sur tout le corpus par precompute.py).
+# problème de départ. La carte des pays n'en dépend plus.
 LIMITE_RECHERCHE_MAX = 47000
 
 # Même variable DB_DIR que download_db.py, pour lire bdd.db au même endroit
 # (le disque persistant Render monté au runtime — voir render.yaml). En
-# local (pas de disque monté), retombe sur le dossier courant.
+# local (pas de disque monté).
 DB_DIR = os.environ.get("DB_DIR", ".")
 DB_PATH = os.path.join(DB_DIR, "bdd.db")
 
@@ -40,14 +39,12 @@ def health():
     return jsonify({"status": "ok"})
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# Nouvelles routes (précalculées) — utilisées par le front
-# ─────────────────────────────────────────────────────────────────────────
+# Nouvelles routes (précalculées) — utilisées par le front#
 
 @application.route("/agregats/nuage")
 def agregats_nuage():
-    """Nuage de mots-clés précalculé (par mois + global), écrit une fois par
-    precompute.py dans la table `agregats`. Quelques centaines de Ko max,
+    """Nuage de mots-clés précalculé (par mois + global), écrit une fois dans la table `agregats`. 
+    Quelques centaines de Ko max,
     quel que soit le nombre d'articles en base."""
     connexion = connecter_bdd()
     curseur = connexion.cursor()
@@ -56,7 +53,6 @@ def agregats_nuage():
     connexion.close()
 
     if not ligne:
-        # precompute.py n'a pas encore tourné sur cette bdd.db.
         return jsonify({
             "par_mois": {},
             "global": {},
@@ -70,11 +66,9 @@ def agregats_nuage():
 
 @application.route("/agregats/carte")
 def agregats_carte():
-    """Répartition par pays précalculée sur TOUT le corpus (precompute.py,
-    table `agregats`, clé `carte_pays`) — remplace l'ancien fonctionnement
+    """Répartition par pays précalculée sur TOUT le corpus, remplace l'ancien fonctionnement
     où le front échantillonnait les articles les plus cités via
-    /articles/recherche (biaisé en faveur des mots-clés concentrés dans les
-    articles très cités, et figé quel que soit le mois choisi).
+    /articles/recherche.
 
     Format de la réponse :
         {
@@ -105,9 +99,9 @@ def recherche_articles():
     """Recherche/filtrage d'articles fait entièrement en SQL (indexé), avec
     auteurs embarqués (pas d'appel séparé à /auteurs/<id> par article).
 
-    Paramètres (tous optionnels) :
+    Paramètres :
       - mot    : mot-clé du référentiel -> lookup indexé dans `mot_articles`
-                 (précalculé par precompute.py), donc pas de scan de `articles`.
+                 , donc pas de scan de `articles`.
       - q      : sous-chaîne recherchée dans le titre (LIKE).
       - mois   : filtre sur le mois (format YYYY-MM).
       - limite : nombre de résultats (défaut 20, plafonné à LIMITE_RECHERCHE_MAX).
@@ -166,7 +160,7 @@ def recherche_articles():
     else:
         # Pas de mot-clé : recherche par titre et/ou mois, ou top articles bruts.
         #
-        # ⚠ Ne JAMAIS joindre `auteurs` avant d'avoir limité `articles` : avec
+        # Ne pas joindre `auteurs` avant d'avoir limité `articles` : avec
         # GROUP BY + ORDER BY + LIMIT sur une requête jointe, SQLite ne peut
         # pas utiliser l'index sur `citations` — il doit joindre + regrouper
         # TOUTE la table avant de trier et de couper au LIMIT. Solution :
@@ -224,54 +218,6 @@ def recherche_articles():
         })
 
     return jsonify(articles)
-
-
-# ─────────────────────────────────────────────────────────────────────────
-# Routes historiques — conservées pour compatibilité, non appelées par le
-# front depuis le passage à /agregats/nuage + /agregats/carte + /articles/recherche.
-# ─────────────────────────────────────────────────────────────────────────
-"""
-@application.route("/articles/count")
-def compter_articles():
-    connexion = connecter_bdd()
-    curseur = connexion.cursor()
-    curseur.execute("SELECT COUNT(*) AS n FROM articles")
-    total = curseur.fetchone()["n"]
-    connexion.close()
-    return jsonify({"total": total})
-
-
-@application.route("/articles/page/<int:numero>")
-def page_articles(numero):
-    try:
-        taille = min(max(int(request.args.get("taille", 500)), 1), 2000)
-    except ValueError:
-        taille = 500
-
-    connexion = connecter_bdd()
-    curseur = connexion.cursor()
-    curseur.execute(
-        SELECT id, titre, date, langue, citations, index_inverse_compte
-        FROM articles
-        ORDER BY date DESC
-        LIMIT ? OFFSET ?
-    , (taille, numero * taille))
-    lignes = curseur.fetchall()
-    connexion.close()
-
-    articles = [
-        {
-            "id": ligne["id"],
-            "titre": ligne["titre"],
-            "date": ligne["date"],
-            "langue": ligne["langue"],
-            "citations": ligne["citations"],
-            "index_inverse_compte": ligne["index_inverse_compte"],
-        }
-        for ligne in lignes
-    ]
-    return jsonify(articles)
-"""
 
 @application.route("/articles/<int:limite>")
 def liste_articles(limite):
