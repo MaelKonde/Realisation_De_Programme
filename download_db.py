@@ -10,7 +10,7 @@ VERSION       : 1.1
 LICENCE       : réalisation de programme - download_db.py
 USAGE         : python download_db.py (à exécuter dans le startCommand Render, pas le buildCommand,
                 car le disque persistant n'est monté qu'au runtime)
-AUTEUR        : Maël Khonde Mbumba et autres sources citées sur app.js (voir rapport .pdf)
+AUTEUR        : Maël Khonde Mbumba et autres sources citées le rapport .pdf
 """
 import os
 import sqlite3
