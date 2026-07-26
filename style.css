@@ -1,3 +1,15 @@
+/*
+NOM DU SCRIPT : style.css
+ROLE          : Feuille de style de l'application "Veille Scientifique"
+DESCRIPTION   : Définit la mise en page, les couleurs, la typographie et les composants visuels
+                du tableau de bord (nuage de mots-clés, carte mondiale, graphiques d'évolution,
+                liste des articles les plus cités) ainsi que la responsivité de l'interface.
+VERSION       : 1.1
+LICENCE       : réalisation de programme - style.css
+USAGE         : Charger dans <head> de index.html, avant les scripts JavaScript
+AUTEUR        : Maël Khonde Mbumba et claude.ia
+*/
+
 :root {
   --ink: #1a1410;
   --parchment: #f5efe6;
