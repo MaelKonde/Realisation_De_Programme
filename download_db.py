@@ -1,16 +1,16 @@
 """
-Nom........ : download_db.py
-Description : Télécharge bdd.db depuis la Release GitHub, UNE SEULE FOIS,
-              vers un disque persistant Render (voir render.yaml : disk
-              monté sur DB_DIR). Ne retélécharge que si le fichier est
-              absent ou si sa taille diffère de celle annoncée par GitHub
-              (HEAD request), au lieu de le refaire à chaque déploiement.
-
-              Le script doit tourner dans le startCommand (au démarrage
-              du conteneur), PAS dans le buildCommand : l'environnement de
-              build de Render est éphémère et n'a pas accès au disque
-              persistant, qui n'est monté qu'au runtime du service.
-Usage...... : python download_db.py
+NOM DU SCRIPT : download_db.py
+ROLE          : Récupération de la base de données SQLite au démarrage du service
+DESCRIPTION   : Télécharge bdd.db depuis la Release GitHub du projet vers le disque persistant
+                Render (voir render.yaml), une seule fois : ne retélécharge que si le fichier est
+                absent ou si sa taille diffère de celle annoncée par GitHub (HEAD request). Crée
+                également les index SQLite nécessaires (articles.citations, articles.date,
+                auteurs.id_article, auteurs.pays) une fois la base en place.
+VERSION       : 1.1
+LICENCE       : réalisation de programme - download_db.py
+USAGE         : python download_db.py (à exécuter dans le startCommand Render, pas le buildCommand,
+                car le disque persistant n'est monté qu'au runtime)
+AUTEUR        : 
 """
 import os
 import sqlite3
