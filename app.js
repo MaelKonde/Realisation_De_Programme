@@ -1,6 +1,7 @@
 /*
-Nom........ : app.js
-Description : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
+NOM DU SCRIPT : app.js
+ROLE          : Le coeur applicatif du projet
+DESCRIPTION : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
               key_word.json (référentiel de mots-clés, servi statiquement à côté de
               index.html — même dépôt que le front). Ces fichiers doivent être
               chargés AVANT celui-ci dans index.html.
@@ -23,8 +24,11 @@ Description : config.js (APP_CONFIG), data.js (CENTROIDS, PAYS_INFO), et
               contient déjà la répartition par pays pour chaque mois, donc
               changer de mois ne déclenche aucun nouvel appel réseau — juste
               une bascule locale + une transition D3 sur les bulles.
-Usage...... : Charger après data.js et config.js
-Auteur .....: Script généré par claude.ia
+
+VERSION     : 1.4
+LICENCE     : réalisation de programme - app.js
+USAGE       : Charger après data.js et config.js
+AUTEUR      : Maël Khonde Mbumba, claude.ia et autres sources citées sur app.js (voir rapport .pdf)
 */
 
 
@@ -643,12 +647,12 @@ function updateMapBubbles(){
 }
 
 function showMapTooltip(event, code){
-  const info = PAYS_INFO[code]||{label:code,flag:'🌐'};
+  const info = PAYS_INFO[code]||{label:code,flag:'��'};
   const top3 = (countryMap[code]?.mots||[]).slice(0,4).map(m=>m.mot);
   const tt = document.getElementById('mapTooltip');
   if(!tt) return;
   tt.innerHTML = `<div class="tt-country">${info.flag} ${info.label}</div>
-    <div class="tt-kw">🔑 ${top3.join(' &nbsp;·&nbsp; ')}</div>`;
+    <div class="tt-kw">�� ${top3.join(' &nbsp;·&nbsp; ')}</div>`;
   moveMapTooltip(event);
   tt.classList.add('show');
 }
@@ -668,7 +672,7 @@ function hideMapTooltip(){ const t=document.getElementById('mapTooltip'); if(t) 
 function selectCountry(code, event){
   if(event) event.stopPropagation();
   ACTIVE_COUNTRY = code;
-  const info = PAYS_INFO[code]||{label:code,flag:'🌐'};
+  const info = PAYS_INFO[code]||{label:code,flag:'��'};
   const sorted = countryMap[code]?.mots||[];
   const maxV = sorted[0]?.poids||1;
 
@@ -831,7 +835,7 @@ function displayArticles(arts, keyword){
   if(!arts.length){
     container.innerHTML=
       `<div style="padding:2rem;text-align:center;color:var(--text-3);font-size:14px;">
-        <div style="font-size:32px;opacity:.35;margin-bottom:10px;">🔍</div>
+        <div style="font-size:32px;opacity:.35;margin-bottom:10px;">��</div>
         ${t('articles_aucun_trouve', keyword)}
         <div style="margin-top:8px;font-size:12px;">${t('articles_essayer_autre')}</div>
       </div>`;
@@ -847,13 +851,13 @@ function displayArticles(arts, keyword){
       <div class="article-title"><a href="${oa||ax}" target="_blank" rel="noopener">${a.titre}</a></div>
       ${auths?`<div class="article-authors">${auths}</div>`:''}
       <div class="meta-row">
-        <span class="meta-pill date">📅 ${(a.date||'').slice(0,7)}</span>
+        <span class="meta-pill date">�� ${(a.date||'').slice(0,7)}</span>
         ${a.citations>0?`<span class="meta-pill cit">⭐ ${a.citations} ${t('citations_mot')}</span>`:''}
         ${pays}
       </div>
       <div class="link-row">
-        ${oa?`<a class="link-btn oa" href="${oa}" target="_blank" rel="noopener">🔗 OpenAlex</a>`:''}
-        <a class="link-btn ax" href="${ax}" target="_blank" rel="noopener">📄 arXiv</a>
+        ${oa?`<a class="link-btn oa" href="${oa}" target="_blank" rel="noopener">�� OpenAlex</a>`:''}
+        <a class="link-btn ax" href="${ax}" target="_blank" rel="noopener">�� arXiv</a>
       </div>
       ${motsCles.length?`<div class="kw-row">${motsCles.map(kw=>{
         const isMatch = keyword && kw.toLowerCase().includes(keyword.toLowerCase());
