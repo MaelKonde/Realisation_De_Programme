@@ -647,12 +647,12 @@ function updateMapBubbles(){
 }
 
 function showMapTooltip(event, code){
-  const info = PAYS_INFO[code]||{label:code,flag:'��'};
+  const info = PAYS_INFO[code]||{label:code,flag:'🌐'};
   const top3 = (countryMap[code]?.mots||[]).slice(0,4).map(m=>m.mot);
   const tt = document.getElementById('mapTooltip');
   if(!tt) return;
   tt.innerHTML = `<div class="tt-country">${info.flag} ${info.label}</div>
-    <div class="tt-kw">�� ${top3.join(' &nbsp;·&nbsp; ')}</div>`;
+    <div class="tt-kw">🔑 ${top3.join(' &nbsp;·&nbsp; ')}</div>`;
   moveMapTooltip(event);
   tt.classList.add('show');
 }
@@ -672,7 +672,7 @@ function hideMapTooltip(){ const t=document.getElementById('mapTooltip'); if(t) 
 function selectCountry(code, event){
   if(event) event.stopPropagation();
   ACTIVE_COUNTRY = code;
-  const info = PAYS_INFO[code]||{label:code,flag:'��'};
+  const info = PAYS_INFO[code]||{label:code,flag:'🌐'};
   const sorted = countryMap[code]?.mots||[];
   const maxV = sorted[0]?.poids||1;
 
@@ -835,7 +835,7 @@ function displayArticles(arts, keyword){
   if(!arts.length){
     container.innerHTML=
       `<div style="padding:2rem;text-align:center;color:var(--text-3);font-size:14px;">
-        <div style="font-size:32px;opacity:.35;margin-bottom:10px;">��</div>
+        <div style="font-size:32px;opacity:.35;margin-bottom:10px;">🔍</div>
         ${t('articles_aucun_trouve', keyword)}
         <div style="margin-top:8px;font-size:12px;">${t('articles_essayer_autre')}</div>
       </div>`;
@@ -851,13 +851,13 @@ function displayArticles(arts, keyword){
       <div class="article-title"><a href="${oa||ax}" target="_blank" rel="noopener">${a.titre}</a></div>
       ${auths?`<div class="article-authors">${auths}</div>`:''}
       <div class="meta-row">
-        <span class="meta-pill date">�� ${(a.date||'').slice(0,7)}</span>
+        <span class="meta-pill date">📅 ${(a.date||'').slice(0,7)}</span>
         ${a.citations>0?`<span class="meta-pill cit">⭐ ${a.citations} ${t('citations_mot')}</span>`:''}
         ${pays}
       </div>
       <div class="link-row">
-        ${oa?`<a class="link-btn oa" href="${oa}" target="_blank" rel="noopener">�� OpenAlex</a>`:''}
-        <a class="link-btn ax" href="${ax}" target="_blank" rel="noopener">�� arXiv</a>
+        ${oa?`<a class="link-btn oa" href="${oa}" target="_blank" rel="noopener">🔗 OpenAlex</a>`:''}
+        <a class="link-btn ax" href="${ax}" target="_blank" rel="noopener">📄 arXiv</a>
       </div>
       ${motsCles.length?`<div class="kw-row">${motsCles.map(kw=>{
         const isMatch = keyword && kw.toLowerCase().includes(keyword.toLowerCase());
